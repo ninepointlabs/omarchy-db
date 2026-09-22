@@ -26,6 +26,8 @@ for exactly what works today.
   a table, or delete the whole database file. The destructive ones ask first.
 - **See only some rows.** "Show rows where Moved is not Yes" hides the rest
   in the grid and the form, and a printed report can use the same rule.
+  Save a rule you keep using as a view, like "Still here", and it lives in
+  the database file.
 - **Print a tidy report.** Pick the columns, a title, the page size. Columns
   shrink and wrap so the whole table fits the page width. See it before you
   print it, or save it as a PDF.
@@ -111,7 +113,8 @@ one is already open). Nothing is replaced without asking first.
 
 Inside a database: **Grid** and **Form** show the same table two ways.
 **Add row** and **Delete row** do what they say. **Show rows where…** hides
-rows that do not match; **Clear** brings them back. **More…** holds the rest:
+rows that do not match; **Clear** brings them back; **Views…** keeps a rule
+under a name and applies it again later. **More…** holds the rest:
 add, rename or delete fields, delete the table, delete the whole database file.
 **Print report** opens the report designer with a live preview, **Print…**
 and **Save PDF…**. **Export…** writes the table as CSV or Excel.
@@ -126,6 +129,7 @@ omarchy-db import ~/Documents/pets.omadb book.xlsx --all-sheets   # one table pe
 omarchy-db tables ~/Documents/pets.omadb              # what's in there
 omarchy-db rows ~/Documents/pets.omadb pets           # look at the rows
 omarchy-db rows ~/Documents/pets.omadb pets --filter moved is_not yes
+omarchy-db save-view ~/Documents/pets.omadb pets "Still here" --filter moved is_not yes
 omarchy-db export ~/Documents/pets.omadb pets out.csv # send it back out (--format csv|xlsx|pdf)
 omarchy-db report ~/Documents/pets.omadb pets pets.pdf --landscape --title "All the pets"
 ```
@@ -148,6 +152,7 @@ The tools are `list_backends`, `create_database`, `list_databases`,
 `open_database`, `plan_import`, `import_spreadsheet`, `list_tables`,
 `describe_table`, `list_rows`, `add_row`, `update_row`, `delete_row`,
 `add_field`, `rename_field`, `delete_field`, `delete_table`, `delete_database`,
+`list_views`, `get_view`, `save_view`, `delete_view`,
 `create_form`, `get_form`, `create_report`, `list_reports`, `delete_report`,
 `export_report` and `export_table`. Run `omarchy-db-mcp --tools` to print
 their schemas.

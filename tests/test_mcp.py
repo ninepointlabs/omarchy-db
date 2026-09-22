@@ -267,3 +267,24 @@ def test_add_field_and_filtered_rows_and_report(sandbox, pets_csv):
     saved = HANDLERS["create_report"]({"path": db, "name": "Still here", "table": "pets",
                                        "filter": {"field": "moved", "op": "empty"}})
     assert saved["report"]["filter_words"] == "Moved is empty"
+
+
+def test_view_tools(sandbox, pets_csv):
+    from omarchy_db_mcp.server import HANDLERS
+
+    db = str(sandbox / "views.omadb")
+    HANDLERS["create_database"]({"title": "V", "path": db})
+    HANDLERS["import_spreadsheet"]({"path": db, "file": str(pets_csv)})
+    HANDLERS["add_field"]({"path": db, "table": "pets", "label": "Moved", "type": "boolean"})
+    saved = HANDLERS["save_view"]({"path": db, "table": "pets", "name": "Still here",
+                                   "filter": {"field": "moved", "op": "is_not", "value": "yes"}, "default": True})
+    assert saved["saved"] is True and saved["words"] == "Moved is not Yes"
+    assert [v["name"] for v in HANDLERS["list_views"]({"path": db})["views"]] == ["Still here"]
+    view = HANDLERS["get_view"]({"path": db, "table": "pets", "name": "Still here"})
+    assert view["default"] is True
+    rows = HANDLERS["list_rows"]({"path": db, "table": "pets", "filter": view["filter"]})
+    assert rows["total"] == 4
+    with pytest.raises(Exception, match="already a view"):
+        HANDLERS["save_view"]({"path": db, "table": "pets", "name": "Still here", "filter": {"field": "moved", "op": "empty"}})
+    assert HANDLERS["delete_view"]({"path": db, "table": "pets", "name": "Still here"})["deleted"] is True
+    assert HANDLERS["list_views"]({"path": db, "table": "pets"})["views"] == []

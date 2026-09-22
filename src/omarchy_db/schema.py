@@ -14,6 +14,7 @@ from .paths import resolve_under_roots
 from .reports import FORM_KEY, REPORT_KEY, list_reports, load_form, load_report, normalise_spec
 from .fields import FIELD_TYPES, Field, slugify_name
 from .storage import SQLITE
+from .views import forget_views, retarget_views
 from .storage.base import Storage, TableInfo
 
 
@@ -56,12 +57,14 @@ def drop_table(storage: Storage, table: str) -> dict[str, Any]:
     info = storage.describe_table(table)
     storage.drop_table(table)
     _forget_key(storage, FORM_KEY + table)
+    views_forgotten = forget_views(storage, table)
     forgotten = []
     for report in list_reports(storage):
         if report["table"] == table:
             _forget_key(storage, REPORT_KEY + report["name"])
             forgotten.append(report["name"])
-    return {"table": table, "rows_deleted": info.row_count, "reports_forgotten": forgotten}
+    return {"table": table, "rows_deleted": info.row_count, "reports_forgotten": forgotten,
+            "views_forgotten": views_forgotten}
 
 
 def delete_database_file(storage: Storage | None, path: str) -> dict[str, Any]:
@@ -101,7 +104,8 @@ def _field_result(info: TableInfo, table: str) -> dict[str, Any]:
 
 
 def _retarget(storage: Storage, table: str, old: str, new: str | None) -> None:
-    """Point the kept form and reports at the new name, or drop the old one."""
+    """Point the kept form, reports and views at the new name, or drop the old one."""
+    retarget_views(storage, table, old, new)
     form = load_form(storage, table)
     if form:
         fields = [(new if n == old else n) for n in form.get("fields", []) if new or n != old]

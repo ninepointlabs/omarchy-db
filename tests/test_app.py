@@ -563,3 +563,68 @@ def test_report_bridge_uses_the_table_filter(app, bridge, sandbox, pets_csv):
     assert built["ok"] is True and built["rows"] == 1
     assert report.spec["filter_words"] == "is_good is No"
     assert report.build({"table": "pets", "columns": ["name"], "filter": None})["rows"] == 4
+
+
+# -- saved views ---------------------------------------------------------------------
+
+def test_saved_views_from_the_bridge(pets, sandbox):
+    pets.addField("Moved", "", "boolean")
+    pets.saveRow(pets.rows.rowId(0), {"moved": "yes"})
+    assert pets.views == []
+    assert pets.saveView("Still here", False, False)["ok"] is False  # no filter yet
+
+    pets.setFilter("moved", "is_not", "yes")
+    saved = pets.saveView("Still here", False, False)
+    assert saved == {"ok": True, "name": "Still here"}
+    assert pets.currentView == "Still here"
+    assert pets.views == [{"name": "Still here", "words": "Moved is not Yes", "default": False}]
+
+    # Editing the bar detaches from the view; saving under the same name asks first.
+    pets.setFilter("moved", "empty", "")
+    assert pets.currentView == ""
+    again = pets.saveView("Still here", False, False)
+    assert again["needsConfirm"] is True and again["name"] == "Still here"
+    assert pets.saveView("Still here", True, True)["ok"] is True
+    assert pets.views[0]["words"] == "Moved is empty" and pets.views[0]["default"] is True
+
+    pets.clearFilter()
+    assert pets.totalRows == 4 and pets.currentView == ""
+    applied = pets.applyView("Still here")
+    assert applied["ok"] is True
+    assert pets.totalRows == 3 and pets.filterWords == "Moved is empty" and pets.currentView == "Still here"
+
+    assert pets.renameView("Still here", "Not moved")["ok"] is True
+    assert pets.currentView == "Not moved"
+    assert pets.setDefaultView("Not moved", False)["ok"] is True
+    assert pets.views[0]["default"] is False
+
+    # It lives in the file: close, reopen, and it is there.
+    path = pets.location
+    pets.closeDatabase()
+    assert pets.openDatabase("sqlite", path, {})["ok"] is True
+    assert [v["name"] for v in pets.views] == ["Not moved"]
+    assert pets.applyView("Not moved")["ok"] is True and pets.totalRows == 3
+
+    # Deleting the field the view is on takes the view with it, quietly.
+    pets.clearFilter()
+    pets.deleteField("moved")
+    assert pets.views == []
+    result = pets.applyView("Not moved")
+    assert result["ok"] is False and "no view" in result["error"]
+    assert pets.deleteView("Not moved")["ok"] is False
+
+
+def test_a_default_view_opens_with_the_table(bridge, sandbox, pets_csv):
+    bridge.importIntoNew(str(pets_csv), str(sandbox / "d.omadb"))
+    bridge.setFilter("is_good", "is", "yes")
+    assert bridge.saveView("Good ones", False, True)["ok"] is True
+    path = bridge.location
+    bridge.closeDatabase()
+    bridge.openDatabase("sqlite", path, {})
+    assert bridge.currentView == "Good ones"
+    assert bridge.totalRows == 3 and bridge.allRows == 4
+    bridge.clearFilter()
+    bridge.selectTable("pets")
+    assert bridge.totalRows == 4  # the default is offered once per session, not forced
+    assert bridge.deleteView("Good ones")["ok"] is True
+    assert bridge.views == []

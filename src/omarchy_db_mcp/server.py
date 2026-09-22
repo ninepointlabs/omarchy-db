@@ -29,7 +29,7 @@ from omarchy_db import __version__, catalog
 from omarchy_db.errors import OmarchyDBError
 from omarchy_db.exporter import export_table
 from omarchy_db.fields import FIELD_TYPES
-from omarchy_db import schema
+from omarchy_db import schema, views
 from omarchy_db.importer import import_spreadsheet, import_workbook, plan_import
 from omarchy_db.reports import (
     delete_report,
@@ -167,6 +167,38 @@ def tool_import_spreadsheet(arguments: dict[str, Any]) -> dict[str, Any]:
     if if_exists == "replace":
         result["note"] = "Any table of that name was dropped first."
     return result
+
+
+def tool_list_views(arguments: dict[str, Any]) -> dict[str, Any]:
+    with _open(arguments) as storage:
+        return {"views": views.list_views(storage, arguments.get("table"))}
+
+
+def tool_get_view(arguments: dict[str, Any]) -> dict[str, Any]:
+    with _open(arguments) as storage:
+        view = views.get_view(storage, arguments["table"], arguments["name"])
+    if view is None:
+        raise OmarchyDBError(f"There is no view called {arguments['name']!r} for {arguments['table']!r}.")
+    return view
+
+
+def tool_save_view(arguments: dict[str, Any]) -> dict[str, Any]:
+    with _open(arguments) as storage:
+        view = views.save_view(
+            storage, arguments["table"], arguments["name"], arguments.get("filter"),
+            replace=bool(arguments.get("replace", False)), default=arguments.get("default"),
+        )
+    view["saved"] = True
+    if view.get("replaced"):
+        view["note"] = "A view of that name was already there and has been replaced."
+    return view
+
+
+def tool_delete_view(arguments: dict[str, Any]) -> dict[str, Any]:
+    with _open(arguments) as storage:
+        gone = views.delete_view(storage, arguments["table"], arguments["name"])
+    return {"deleted": bool(gone), "name": arguments["name"], "table": arguments["table"],
+            "note": "The rows stay; only the saved filter is gone." if gone else "No view has that name."}
 
 
 def tool_rename_field(arguments: dict[str, Any]) -> dict[str, Any]:
@@ -663,6 +695,59 @@ TOOLS: list[dict[str, Any]] = [
             "additionalProperties": False,
         },
         "handler": tool_export_report,
+    },
+    {
+        "name": "list_views",
+        "description": "Saved views: named filters kept in the database, per table. Apply one with list_rows and its filter.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {**_TARGET_PROPERTIES, "table": {"type": "string", "description": "Only this table's views."}},
+            "additionalProperties": False,
+        },
+        "handler": tool_list_views,
+    },
+    {
+        "name": "get_view",
+        "description": "One saved view: its filter and whether it is the table's default.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {**_TARGET_PROPERTIES, "table": {"type": "string"}, "name": {"type": "string"}},
+            "required": ["table", "name"],
+            "additionalProperties": False,
+        },
+        "handler": tool_get_view,
+    },
+    {
+        "name": "save_view",
+        "description": (
+            "Keep a filter under a name, like 'Still here' = Moved is not Yes. Refuses a taken name "
+            "unless replace is true. default: true makes it the view the table opens with."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                **_TARGET_PROPERTIES,
+                "table": {"type": "string"},
+                "name": {"type": "string"},
+                "filter": _FILTER_SCHEMA,
+                "replace": {"type": "boolean", "default": False},
+                "default": {"type": "boolean"},
+            },
+            "required": ["table", "name", "filter"],
+            "additionalProperties": False,
+        },
+        "handler": tool_save_view,
+    },
+    {
+        "name": "delete_view",
+        "description": "Forget a saved view. The rows stay; only the saved filter goes.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {**_TARGET_PROPERTIES, "table": {"type": "string"}, "name": {"type": "string"}},
+            "required": ["table", "name"],
+            "additionalProperties": False,
+        },
+        "handler": tool_delete_view,
     },
     {
         "name": "add_field",

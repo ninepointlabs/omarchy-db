@@ -22,7 +22,7 @@ from PySide6.QtCore import (
     Slot,
 )
 
-from omarchy_db import catalog, schema
+from omarchy_db import catalog, schema, views
 from omarchy_db.errors import OmarchyDBError
 from omarchy_db.exporter import export_table
 from omarchy_db.fields import FIELD_TYPE_LABELS, FIELD_TYPES, Field, slugify_name
@@ -210,6 +210,10 @@ class Bridge(QObject):
         self._filters: dict[str, dict[str, Any]] = {}
         self._filter: dict[str, Any] | None = None
         self._all_rows = 0
+        #: The saved view the current filter came from, per table ("" when none / edited away).
+        self._view_names: dict[str, str] = {}
+        #: Tables whose default view was already offered once this session.
+        self._defaulted: set[str] = set()
 
     def storage(self) -> Storage | None:
         return self._storage
@@ -315,6 +319,102 @@ class Bridge(QObject):
         """How many rows the table has before the filter."""
         return self._all_rows
 
+    # -- saved views ---------------------------------------------------------------
+    @Property("QVariantList", notify=tableChanged)
+    def views(self) -> list[dict[str, Any]]:
+        """The current table's saved views: name, words, default."""
+        if self._storage is None or not self._current_table:
+            return []
+        try:
+            return [{"name": v["name"], "words": v.get("words", ""), "default": bool(v.get("default"))}
+                    for v in views.list_views(self._storage, self._current_table)]
+        except OmarchyDBError:
+            return []
+
+    @Property(str, notify=tableChanged)
+    def currentView(self) -> str:  # noqa: N802
+        """The saved view whose filter is on screen, or blank."""
+        return self._view_names.get(self._current_table, "") if self._filter else ""
+
+    @Slot(str, bool, bool, result="QVariantMap")
+    def saveView(self, name: str, replace: bool, default: bool) -> dict:  # noqa: N802
+        """Keep the filter on screen under a name. A taken name needs `replace`."""
+        if self._storage is None or not self._current_table:
+            return {"ok": False, "error": "Pick a table first."}
+        if not self._filter:
+            return {"ok": False, "error": "Apply a filter first, then save it as a view."}
+        existing = views.get_view(self._storage, self._current_table, name)
+        if existing and not replace:
+            return {"ok": False, "needsConfirm": True, "name": existing["name"]}
+        try:
+            view = views.save_view(self._storage, self._current_table, name, self._filter,
+                                   replace=replace, default=default or None)
+        except OmarchyDBError as error:
+            return {"ok": False, "error": str(error)}
+        self._view_names[self._current_table] = view["name"]
+        self.tableChanged.emit()
+        self.message.emit(f"Saved the view \u201c{view['name']}\u201d.")
+        return {"ok": True, "name": view["name"]}
+
+    @Slot(str, result="QVariantMap")
+    def applyView(self, name: str) -> dict:  # noqa: N802
+        """Show the rows a saved view asks for. A view on a field that is gone is dropped."""
+        if self._storage is None or not self._current_table:
+            return {"ok": False, "error": "Pick a table first."}
+        view = views.get_view(self._storage, self._current_table, name)
+        if view is None:
+            return {"ok": False, "error": f"There is no view called \u201c{name}\u201d."}
+        fields = [Field(name=f["name"], type=f["type"], label=f["label"]) for f in self._fields]
+        try:
+            spec = normalise_filter(fields, view.get("filter"))
+        except OmarchyDBError:
+            views.delete_view(self._storage, self._current_table, name)
+            self.tableChanged.emit()
+            return {"ok": False, "error": f"The view \u201c{name}\u201d used a field that is gone, so it was removed."}
+        self._filters[self._current_table] = spec
+        self._view_names[self._current_table] = view["name"]
+        return self.selectTable(self._current_table)
+
+    @Slot(str, result="QVariantMap")
+    def deleteView(self, name: str) -> dict:  # noqa: N802
+        if self._storage is None or not self._current_table:
+            return {"ok": False, "error": "Pick a table first."}
+        gone = views.delete_view(self._storage, self._current_table, name)
+        if self._view_names.get(self._current_table) == name:
+            self._view_names[self._current_table] = ""
+        self.tableChanged.emit()
+        if gone:
+            self.message.emit(f"Deleted the view \u201c{name}\u201d. The rows are still there.")
+        return {"ok": gone, "error": "" if gone else "That view was already gone."}
+
+    @Slot(str, str, result="QVariantMap")
+    def renameView(self, old: str, new: str) -> dict:  # noqa: N802
+        if self._storage is None or not self._current_table:
+            return {"ok": False, "error": "Pick a table first."}
+        try:
+            view = views.rename_view(self._storage, self._current_table, old, new)
+        except OmarchyDBError as error:
+            return {"ok": False, "error": str(error)}
+        if self._view_names.get(self._current_table) == old:
+            self._view_names[self._current_table] = view["name"]
+        self.tableChanged.emit()
+        return {"ok": True, "name": view["name"]}
+
+    @Slot(str, bool, result="QVariantMap")
+    def setDefaultView(self, name: str, default: bool) -> dict:  # noqa: N802
+        """Make (or unmake) a view the one this table opens with."""
+        if self._storage is None or not self._current_table:
+            return {"ok": False, "error": "Pick a table first."}
+        view = views.get_view(self._storage, self._current_table, name)
+        if view is None:
+            return {"ok": False, "error": f"There is no view called \u201c{name}\u201d."}
+        try:
+            views.save_view(self._storage, self._current_table, name, view["filter"], replace=True, default=default)
+        except OmarchyDBError as error:
+            return {"ok": False, "error": str(error)}
+        self.tableChanged.emit()
+        return {"ok": True}
+
     @Slot(result="QVariantList")
     def filterOps(self) -> list[dict[str, Any]]:  # noqa: N802
         return [{"key": op, "label": OP_WORDS[op], "needsValue": op in ("is", "is_not", "contains")} for op in OPS]
@@ -330,9 +430,12 @@ class Bridge(QObject):
         except OmarchyDBError as error:
             return {"ok": False, "error": str(error)}
         if spec:
+            if spec != self._filters.get(self._current_table):
+                self._view_names[self._current_table] = ""
             self._filters[self._current_table] = spec
         else:
             self._filters.pop(self._current_table, None)
+            self._view_names[self._current_table] = ""
         return self.selectTable(self._current_table)
 
     @Slot(result="QVariantMap")
@@ -340,6 +443,7 @@ class Bridge(QObject):
         if not self._current_table:
             return {"ok": False, "error": "Pick a table first."}
         self._filters.pop(self._current_table, None)
+        self._view_names[self._current_table] = ""
         return self.selectTable(self._current_table)
 
     @Slot(str, result=str)
@@ -734,6 +838,16 @@ class Bridge(QObject):
     def selectTable(self, table: str) -> dict:  # noqa: N802
         if self._storage is None:
             return {"ok": False, "error": "Open a database first."}
+        if table not in self._defaulted:
+            self._defaulted.add(table)
+            if table not in self._filters:
+                try:
+                    default = views.default_view(self._storage, table)
+                except OmarchyDBError:
+                    default = None
+                if default:
+                    self._filters[table] = default["filter"]
+                    self._view_names[table] = default["name"]
         where = self._filters.get(table)
         try:
             page = self._storage.list_rows(table, limit=PAGE_SIZE, where=where)
@@ -822,6 +936,8 @@ class Bridge(QObject):
         self._shown = self._total = 0
         self._filters = {}
         self._filter = None
+        self._view_names = {}
+        self._defaulted = set()
         self._rows.clear()
         self.tablesChanged.emit()
         self.tableChanged.emit()
@@ -837,6 +953,8 @@ class Bridge(QObject):
         self._storage = storage
         self._filters = {}
         self._filter = None
+        self._view_names = {}
+        self._defaulted = set()
         info = storage.describe()
         catalog.remember(
             title=info.title,

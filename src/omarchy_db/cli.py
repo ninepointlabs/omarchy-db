@@ -20,6 +20,7 @@ from .errors import OmarchyDBError
 from .exporter import export_table
 from .importer import import_spreadsheet, import_workbook, plan_import
 from .reports import export_report
+from . import views as _views
 from .storage import BACKENDS, create_database, open_database
 
 
@@ -142,6 +143,33 @@ def cmd_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_views(args: argparse.Namespace) -> int:
+    with open_database(backend="sqlite", path=args.path) as storage:
+        found = _views.list_views(storage, args.table)
+    if not found:
+        print("No saved views yet. Apply a filter with `rows --filter`, then `save-view`.")
+    for view in found:
+        star = " (default)" if view.get("default") else ""
+        print(f"{view['table']}: {view['name']}{star}  —  {view.get('words', '')}")
+    return 0
+
+
+def cmd_save_view(args: argparse.Namespace) -> int:
+    spec = {"field": args.filter[0], "op": args.filter[1], "value": args.filter[2] if len(args.filter) > 2 else None}
+    with open_database(backend="sqlite", path=args.path) as storage:
+        view = _views.save_view(storage, args.table, args.name, spec, replace=args.replace,
+                                default=True if args.default else None)
+    print(f"Saved the view {view['name']!r} for {args.table}: {view['words']}")
+    return 0
+
+
+def cmd_delete_view(args: argparse.Namespace) -> int:
+    with open_database(backend="sqlite", path=args.path) as storage:
+        gone = _views.delete_view(storage, args.table, args.name)
+    print("Deleted." if gone else "No view has that name.")
+    return 0 if gone else 2
+
+
 def cmd_recent(args: argparse.Namespace) -> int:
     entries = catalog.recent()
     if not entries:
@@ -214,6 +242,26 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--format", default="csv", choices=["csv", "xlsx", "pdf"])
     sub.add_argument("--overwrite", action="store_true")
     sub.set_defaults(func=cmd_export)
+
+    sub = subs.add_parser("views", help="Saved views (named filters) in a database")
+    sub.add_argument("path")
+    sub.add_argument("table", nargs="?")
+    sub.set_defaults(func=cmd_views)
+
+    sub = subs.add_parser("save-view", help="Keep a filter under a name")
+    sub.add_argument("path")
+    sub.add_argument("table")
+    sub.add_argument("name")
+    sub.add_argument("--filter", nargs="+", required=True, metavar="X", help="FIELD OP [VALUE]")
+    sub.add_argument("--replace", action="store_true")
+    sub.add_argument("--default", action="store_true", help="Open the table with this view")
+    sub.set_defaults(func=cmd_save_view)
+
+    sub = subs.add_parser("delete-view", help="Forget a saved view (the rows stay)")
+    sub.add_argument("path")
+    sub.add_argument("table")
+    sub.add_argument("name")
+    sub.set_defaults(func=cmd_delete_view)
 
     sub = subs.add_parser("recent", help="Databases you opened lately")
     sub.set_defaults(func=cmd_recent)

@@ -92,7 +92,7 @@ def test_drop_table_forgets_its_form_and_reports(pets):
     save_form(pets, "pets", {"fields": ["name"]})
     save_report(pets, {"name": "All", "table": "pets"})
     result = schema.drop_table(pets, "pets")
-    assert result == {"table": "pets", "rows_deleted": 4, "reports_forgotten": ["All"]}
+    assert result == {"table": "pets", "rows_deleted": 4, "reports_forgotten": ["All"], "views_forgotten": []}
     assert pets.list_tables() == []
     assert list_reports(pets) == []
     assert pets.get_info("form:pets", "") == ""

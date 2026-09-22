@@ -2,6 +2,53 @@
 
 **Phase B (forms, Excel, reports, printing). Last updated 2026-09-22.**
 
+## 2026-09-22 (evening) — Saved views: named filters that stick
+
+Tim's follow-up: a filter worth keeping should not have to be typed again.
+A **view** is one table, one name, one "Show rows where…" rule, kept inside
+the `.omadb` under `view:<table>:<name>` in Omarchy-DB's own info table, so
+it travels with the file and survives close and reopen.
+
+**In the window.** The filter bar ends with **Views…** (it reads "View: Still
+here" while a saved view is on). The menu lists this table's views with
+their rule in words; pick one and it applies. Below a line: **Save view…**
+(only when a filter is on) asks for a name, pre-filled with the current
+view's name, plus "Open this table with this view"; saving under a taken
+name asks "Replace the view?" first. **Rename…** and **Delete…** appear for
+the view that is on; Delete confirms with "The rows stay. Only the saved
+filter goes." With no views yet the menu says "No saved views yet — Apply a
+filter, then Save view…". Editing the bar after loading a view detaches
+from it (the button goes back to "Views…"); nothing is overwritten unless
+you save again.
+
+**Default view.** One view per table can be the one the table opens with.
+It is applied the first time the table is shown after the database opens;
+Clear then shows everything, and it is not forced again that session.
+
+**When a field changes.** Renaming a field updates the views on it (and
+their words); deleting the field deletes those views; deleting the table
+deletes its views. A view that somehow points at a missing field is removed
+with a message when picked.
+
+**Core, MCP, CLI.** `omarchy_db/views.py`: `save_view` (refuses a blank or
+taken name, needs a real filter), `get_view`, `list_views`, `delete_view`,
+`rename_view`, `default_view`; uses `filters.normalise_filter`, so there is
+still one filter language. MCP (28 tools now): `list_views`, `get_view`,
+`save_view` (`replace`, `default`), `delete_view`. CLI: `views`,
+`save-view --filter FIELD OP [VALUE] [--default] [--replace]`, `delete-view`.
+
+Tests: 161 pass (`tests/test_views.py`: save/list/apply/delete round trip,
+survives close and reopen, name checks, one default per table, rename,
+following a field rename, going with a field or table drop; plus bridge
+and MCP tests, including the default view applying on reopen).
+
+To try Tim's case: Show rows where Moved is not Yes → Apply → Views… →
+Save view… → "Still here" → Save. Close the database, open it again, Views…
+→ Still here. Delete it from the same menu; the rows stay.
+
+Not done: applying a view from the report dialog by name (the report still
+uses "the filter on now", which is the view's rule once picked); column sort.
+
 ## 2026-09-22 (later) — Add fields, and "Show rows where…"
 
 Tim's next asks: add a field to a table (a "Moved" yes/no), and hide rows on
@@ -240,7 +287,8 @@ unit test performs the same rm-rf-then-rename twice.
 
 ## Verified
 
-- `python -m pytest` — **152 passed** (143 after import-all/delete/rename
+- `python -m pytest` — **161 passed** (152 after filters and add-field plus
+  the saved-view tests; the 152 were 143 after import-all/delete/rename
   plus the filter and add-field tests; the 143 were 127 after the Excel
   header fix plus schema, import-all, bridge and MCP tests; the 127 were 123 after Phase B
   plus the four Excel header tests; the 123 were 101 after A2, plus theme swap, editing,
