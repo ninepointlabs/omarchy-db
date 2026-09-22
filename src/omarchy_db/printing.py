@@ -91,6 +91,7 @@ class ReportDocument:
 
         self.line_h = metrics.height()
         self.title_h = QtGui.QFontMetricsF(self.title_font).height() + 8
+        self.subtitle_h = (QtGui.QFontMetricsF(self.small).height() + 4) if self.spec.get("filter_words") else 0.0
         self.header_h = bold_metrics.height() + 2 * CELL_PAD
         self.footer_h = QtGui.QFontMetricsF(self.small).height() + 6
 
@@ -113,7 +114,7 @@ class ReportDocument:
         first = True
         total = len(self.rows)
         while start < total or first:
-            top = self.content.top() + (self.title_h if first else 0) + self.header_h
+            top = self.content.top() + ((self.title_h + self.subtitle_h) if first else 0) + self.header_h
             bottom = self.content.bottom() - self.footer_h
             end = start
             used = top
@@ -152,6 +153,16 @@ class ReportDocument:
                 self.spec["title"],
             )
             y += self.title_h
+            if self.spec.get("filter_words"):
+                painter.setFont(self.small)
+                painter.setPen(QtGui.QPen(QtGui.QColor("#555555")))
+                painter.drawText(
+                    QtCore.QRectF(x0, y, self.content.width(), self.subtitle_h),
+                    int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
+                    "Only rows where " + self.spec["filter_words"],
+                )
+                painter.setPen(QtGui.QPen(fg))
+                y += self.subtitle_h
 
         # Header band
         painter.fillRect(QtCore.QRectF(x0, y, self.table_width, self.header_h), band)

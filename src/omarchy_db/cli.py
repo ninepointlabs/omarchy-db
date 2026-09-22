@@ -117,8 +117,12 @@ def cmd_tables(args: argparse.Namespace) -> int:
 
 
 def cmd_rows(args: argparse.Namespace) -> int:
+    where = None
+    if args.filter:
+        field, op = args.filter[0], args.filter[1]
+        where = {"field": field, "op": op, "value": args.filter[2] if len(args.filter) > 2 else None}
     with open_database(backend="sqlite", path=args.path) as storage:
-        page = storage.list_rows(args.table, limit=args.limit, offset=args.offset)
+        page = storage.list_rows(args.table, limit=args.limit, offset=args.offset, where=where)
     if args.json:
         print(json.dumps(page, indent=2, default=str))
         return 0
@@ -197,6 +201,10 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--limit", type=int, default=20)
     sub.add_argument("--offset", type=int, default=0)
     sub.add_argument("--json", action="store_true")
+    sub.add_argument(
+        "--filter", nargs="+", metavar="X",
+        help="FIELD OP [VALUE]; OP is is, is_not, empty, not_empty or contains",
+    )
     sub.set_defaults(func=cmd_rows)
 
     sub = subs.add_parser("export", help="Write a table out as CSV, Excel or PDF")

@@ -15,6 +15,7 @@ from typing import Any
 
 from ..errors import BadName, TableMissing
 from ..fields import INTERNAL_PREFIX, Field, coerce, is_safe_name
+from ..filters import normalise_filter, where_clause
 
 #: Table that remembers each table's declared fields and labels.
 META_TABLE = f"{INTERNAL_PREFIX}tables"
@@ -220,6 +221,20 @@ class Storage(ABC):
         return TableInfo(name=table, fields=list(fields), row_count=0)
 
     # -- fields --------------------------------------------------------
+    def add_field(self, table: str, field: Field) -> TableInfo:
+        """Add a column. Rows already there get nothing in it (blank)."""
+        info = self.describe_table(table)
+        check_name(field.name, what="field name")
+        if field.name == ROW_ID:
+            raise BadName(f"{ROW_ID!r} is kept for the row number; pick another name.")
+        if field.name in {f.name for f in info.fields}:
+            raise BadName(f"There is already a field called {field.name!r} in {table!r}.")
+        self.execute(f"ALTER TABLE {self.quote(table)} ADD COLUMN {self.column_sql(field)}")
+        fields = list(info.fields) + [field]
+        self.remember_fields(table, fields)
+        self.commit()
+        return TableInfo(name=table, fields=fields, row_count=info.row_count)
+
     def drop_field(self, table: str, name: str) -> TableInfo:
         """Remove one column and everything in it. The table keeps at least one field."""
         info = self.describe_table(table)
@@ -314,9 +329,15 @@ class Storage(ABC):
         """Read the engine's own column list, for tables we did not make."""
 
     # -- rows -------------------------------------------------------------
-    def count_rows(self, table: str) -> int:
+    def count_rows(self, table: str, *, where: dict[str, Any] | None = None) -> int:
         check_user_table(table)
-        rows = self.query(f"SELECT COUNT(*) FROM {self.quote(table)}")
+        sql = f"SELECT COUNT(*) FROM {self.quote(table)}"
+        params: list[Any] = []
+        if where:
+            info = self.describe_table(table)
+            clause, params = where_clause(self, normalise_filter(info.fields, where))
+            sql += f" WHERE {clause}"
+        rows = self.query(sql, params)
         return int(rows[0][0]) if rows else 0
 
     def add_row(self, table: str, values: dict[str, Any]) -> int | None:
@@ -363,10 +384,14 @@ class Storage(ABC):
         offset: int = 0,
         order_by: str | None = None,
         descending: bool = False,
+        where: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        """A page of rows. `where` is {field, op, value} (see `filters.py`), or None for all."""
         info = self.describe_table(table)
         limit = max(1, min(int(limit), 5000))
         offset = max(0, int(offset))
+        filter_spec = normalise_filter(info.fields, where)
+        clause, params = where_clause(self, filter_spec)
 
         order_field = ROW_ID
         if order_by:
@@ -377,12 +402,14 @@ class Storage(ABC):
         columns = [ROW_ID] + [f.name for f in info.fields]
         sql = (
             f"SELECT {', '.join(self.quote(c) for c in columns)} FROM {self.quote(table)} "
-            f"ORDER BY {self.quote(order_field)} {'DESC' if descending else 'ASC'} "
+            + (f"WHERE {clause} " if clause else "")
+            + f"ORDER BY {self.quote(order_field)} {'DESC' if descending else 'ASC'} "
             f"LIMIT {limit} OFFSET {offset}"
         )
-        rows = self.query(sql)
+        rows = self.query(sql, params)
         # Column 0 is the row id; the rest line up with the fields.
         types = [None] + [f.type for f in info.fields]
+        matching = self.count_rows(table, where=filter_spec) if filter_spec else info.row_count
         return {
             "table": table,
             "fields": [{"name": f.name, "type": f.type, "label": f.title} for f in info.fields],
@@ -393,7 +420,9 @@ class Storage(ABC):
             ],
             "limit": limit,
             "offset": offset,
-            "total": info.row_count,
+            "total": matching,
+            "total_all": info.row_count,
+            "filter": filter_spec,
         }
 
     def update_row(self, table: str, row_id: int, values: dict[str, Any]) -> bool:

@@ -215,6 +215,10 @@ def _clean(spec: dict[str, Any]) -> dict[str, Any]:
                 continue
         elif key == "columns":
             out[key] = [str(v) for v in value]
+        elif key == "filter":
+            if isinstance(value, dict) and value.get("field"):
+                out[key] = {"field": str(value.get("field")), "op": str(value.get("op") or "is"),
+                            "value": value.get("value")}
         else:
             out[key] = value
     return out

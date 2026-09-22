@@ -243,3 +243,27 @@ def test_schema_tools_and_import_all_sheets(sandbox, pets_csv):
     assert (sandbox / "schema.omadb").exists()
     assert HANDLERS["delete_database"]({"path": db, "confirm": True})["deleted"] is True
     assert not (sandbox / "schema.omadb").exists()
+
+
+def test_add_field_and_filtered_rows_and_report(sandbox, pets_csv):
+    pytest.importorskip("PySide6")
+    from omarchy_db_mcp.server import HANDLERS
+
+    db = str(sandbox / "filter.omadb")
+    HANDLERS["create_database"]({"title": "F", "path": db})
+    HANDLERS["import_spreadsheet"]({"path": db, "file": str(pets_csv)})
+    added = HANDLERS["add_field"]({"path": db, "table": "pets", "label": "Moved", "type": "boolean"})
+    assert added["added"] == "moved"
+    rows = HANDLERS["list_rows"]({"path": db, "table": "pets"})
+    HANDLERS["update_row"]({"path": db, "table": "pets", "id": rows["rows"][0][0], "values": {"moved": "yes"}})
+    kept = HANDLERS["list_rows"]({"path": db, "table": "pets", "filter": {"field": "moved", "op": "is_not", "value": "yes"}})
+    assert [r[1] for r in kept["rows"]] == ["Milo", "Shadow", "Pip"]
+    assert kept["total"] == 3 and kept["total_all"] == 4
+    with pytest.raises(Exception, match="no field"):
+        HANDLERS["list_rows"]({"path": db, "table": "pets", "filter": {"field": "gone", "op": "is", "value": 1}})
+    out = HANDLERS["export_report"]({"path": db, "table": "pets", "file": str(sandbox / "kept.pdf"),
+                                     "filter": {"field": "moved", "op": "is_not", "value": "yes"}})
+    assert out["rows_written"] == 3
+    saved = HANDLERS["create_report"]({"path": db, "name": "Still here", "table": "pets",
+                                       "filter": {"field": "moved", "op": "empty"}})
+    assert saved["report"]["filter_words"] == "Moved is empty"

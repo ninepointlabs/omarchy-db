@@ -250,16 +250,16 @@ Page {
 
             EmptyState {
                 anchors.fill: parent
-                visible: Bridge.tables.length > 0 && Bridge.totalRows === 0
+                visible: Bridge.tables.length > 0 && Bridge.totalRows === 0 && Bridge.filterWords === "" && page.mode !== "form"
                 title: "No rows yet"
-                text: "This table is empty. Adding rows by hand comes in the next step of the project."
+                text: "This table is empty. Press Add row, or import a spreadsheet."
             }
 
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 12
                 spacing: 0
-                visible: Bridge.tables.length > 0 && (Bridge.totalRows > 0 || page.mode === "form")
+                visible: Bridge.tables.length > 0 && (Bridge.totalRows > 0 || page.mode === "form" || Bridge.filterWords !== "")
 
                 RowLayout {
                     Layout.fillWidth: true
@@ -295,6 +295,12 @@ Page {
                             MenuItem { text: "Delete this whole database\u2026"; enabled: Bridge.isLocalFile; onTriggered: confirmDeleteDatabase.open() }
                         }
                     }
+                }
+
+                FilterBar {
+                    Layout.fillWidth: true
+                    Layout.bottomMargin: 10
+                    visible: Bridge.fields.length > 0
                 }
 
                 FormView {
@@ -399,10 +405,17 @@ Page {
 
                 Label {
                     Layout.topMargin: 8
-                    text: Bridge.shownRows === Bridge.totalRows
+                    text: Bridge.filterWords !== ""
+                        ? (Bridge.totalRows === 0
+                            ? "No rows where " + Bridge.filterWords + ". Press Clear to see all " + Bridge.allRows + "."
+                            : "Showing " + Bridge.totalRows + " of " + Bridge.allRows + " rows where " + Bridge.filterWords
+                              + (Bridge.shownRows < Bridge.totalRows ? " (first " + Bridge.shownRows + ")" : ""))
+                        : Bridge.shownRows === Bridge.totalRows
                         ? (Bridge.totalRows === 1 ? "1 row" : Bridge.totalRows + " rows")
                         : "Showing the first " + Bridge.shownRows + " of " + Bridge.totalRows + " rows"
-                    color: Theme.lightForeground
+                    color: Bridge.filterWords !== "" ? Theme.yellow : Theme.lightForeground
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
                     font.pointSize: 10
                 }
             }

@@ -502,3 +502,64 @@ def test_import_every_sheet_from_the_bridge(bridge, sandbox):
     again = bridge.importAllSheets(url, False)
     assert again["needsConfirm"] is True
     assert again["tables"] == ["people", "places"]
+
+
+# -- filters and add field -----------------------------------------------------------
+
+def test_add_field_and_filter_from_the_bridge(pets):
+    assert pets.slugName("Vet's phone") == "vet_s_phone"
+    assert pets.slugName("  ") == ""
+    added = pets.addField("Moved", "", "boolean")
+    assert added["ok"] is True
+    assert pets.fields[-1] == {"name": "moved", "type": "boolean", "label": "Moved"}
+    assert pets.rows.columnCount() == 7
+    assert pets.rows.record(0)["values"]["moved"] is False
+    assert pets.addField("Moved", "", "text")["ok"] is False
+    assert pets.addField("", "", "text")["ok"] is False
+
+    first = pets.rows.rowId(0)
+    third = pets.rows.rowId(2)
+    assert pets.saveRow(first, {"moved": True})["ok"] is True
+    assert pets.saveRow(third, {"moved": "yes"})["ok"] is True
+
+    ops = [o["key"] for o in pets.filterOps()]
+    assert ops == ["is", "is_not", "empty", "not_empty", "contains"]
+    shown = pets.setFilter("moved", "is_not", "yes")
+    assert shown["ok"] is True
+    assert pets.totalRows == 2
+    assert pets.allRows == 4
+    assert pets.filterWords == "Moved is not Yes"
+    assert pets.filter == {"field": "moved", "op": "is_not", "value": "yes"}
+    assert [pets.rows.record(i)["values"]["name"] for i in range(pets.rows.rowCount())] == ["Milo", "Pip"]
+
+    # Editing keeps the filter; a new row that does not match drops out of view but is saved.
+    assert pets.saveRow(0, {"name": "Nova", "moved": True})["ok"] is True
+    assert pets.totalRows == 2 and pets.allRows == 5
+    assert pets.saveRow(0, {"name": "Ash"})["ok"] is True
+    assert pets.totalRows == 3
+    assert pets.filterWords == "Moved is not Yes"
+
+    bad = pets.setFilter("age", "is", "old")
+    assert bad["ok"] is False and "whole number" in bad["error"]
+    assert pets.filterWords == "Moved is not Yes"  # the old filter stays
+    assert pets.clearFilter()["ok"] is True
+    assert pets.filterWords == "" and pets.totalRows == 6 and pets.filter == {}
+
+    # The filter is remembered per table while the database is open, and dropped if its field goes.
+    pets.setFilter("moved", "empty", "")
+    pets.selectTable("pets")
+    assert pets.filterWords == "Moved is empty"
+    pets.deleteField("moved")
+    assert pets.filterWords == "" and pets.totalRows == 6
+
+
+def test_report_bridge_uses_the_table_filter(app, bridge, sandbox, pets_csv):
+    from omarchy_db_app.report_bridge import Report, ReportImageProvider
+
+    bridge.importIntoNew(str(pets_csv), str(sandbox / "f.omadb"))
+    bridge.setFilter("is_good", "is", "no")
+    report = Report(bridge.storage, ReportImageProvider())
+    built = report.build({"table": "pets", "columns": ["name"], "filter": bridge.filter})
+    assert built["ok"] is True and built["rows"] == 1
+    assert report.spec["filter_words"] == "is_good is No"
+    assert report.build({"table": "pets", "columns": ["name"], "filter": None})["rows"] == 4

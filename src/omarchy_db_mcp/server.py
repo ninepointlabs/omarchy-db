@@ -61,6 +61,22 @@ _CONNECTION_SCHEMA = {
     "additionalProperties": False,
 }
 
+_FILTER_SCHEMA = {
+    "type": "object",
+    "description": (
+        "Show only rows where a field matches: {field, op, value}. op is one of "
+        "is, is_not, empty, not_empty, contains (contains: words fields only). "
+        "Yes/no fields accept yes/no/true/false/1/0. 'is_not' keeps blank rows."
+    ),
+    "properties": {
+        "field": {"type": "string"},
+        "op": {"type": "string", "enum": ["is", "is_not", "empty", "not_empty", "contains"]},
+        "value": {},
+    },
+    "required": ["field", "op"],
+    "additionalProperties": False,
+}
+
 _TARGET_PROPERTIES = {
     "backend": {"type": "string", "enum": _BACKEND_ENUM, "default": "sqlite"},
     "path": {"type": "string", "description": "The database file, for the sqlite backend."},
@@ -218,7 +234,19 @@ def tool_list_rows(arguments: dict[str, Any]) -> dict[str, Any]:
             offset=int(arguments.get("offset", 0)),
             order_by=arguments.get("order_by"),
             descending=bool(arguments.get("descending", False)),
+            where=arguments.get("filter"),
         )
+
+
+def tool_add_field(arguments: dict[str, Any]) -> dict[str, Any]:
+    with _open(arguments) as storage:
+        result = schema.add_field(
+            storage, arguments["table"], label=arguments.get("label", ""),
+            name=arguments.get("name", ""), field_type=arguments.get("type", "text"),
+        )
+    result["added"] = result["fields"][-1]["name"]
+    result["note"] = "Rows already there have nothing in the new field."
+    return result
 
 
 def tool_add_row(arguments: dict[str, Any]) -> dict[str, Any]:
@@ -261,7 +289,7 @@ def tool_get_form(arguments: dict[str, Any]) -> dict[str, Any]:
 
 def _report_spec(arguments: dict[str, Any]) -> dict[str, Any]:
     keys = ("name", "table", "title", "columns", "page_size", "orientation", "margins_mm",
-            "fit_to_width", "font_pt", "show_row_numbers")
+            "fit_to_width", "font_pt", "show_row_numbers", "filter")
     return {key: arguments[key] for key in keys if key in arguments}
 
 
@@ -454,6 +482,7 @@ TOOLS: list[dict[str, Any]] = [
                 "offset": {"type": "integer", "default": 0},
                 "order_by": {"type": "string", "description": "A field name, or 'id'."},
                 "descending": {"type": "boolean", "default": False},
+                "filter": _FILTER_SCHEMA,
             },
             "required": ["table"],
             "additionalProperties": False,
@@ -578,6 +607,7 @@ TOOLS: list[dict[str, Any]] = [
                 "fit_to_width": {"type": "boolean", "default": True, "description": "Shrink and wrap columns so the table fits the page width."},
                 "font_pt": {"type": "number", "default": 10},
                 "show_row_numbers": {"type": "boolean", "default": False},
+                "filter": _FILTER_SCHEMA,
             },
             "required": ["table"],
             "additionalProperties": False,
@@ -626,12 +656,30 @@ TOOLS: list[dict[str, Any]] = [
                 "fit_to_width": {"type": "boolean", "default": True, "description": "Shrink and wrap columns so the table fits the page width."},
                 "font_pt": {"type": "number", "default": 10},
                 "show_row_numbers": {"type": "boolean", "default": False},
+                "filter": _FILTER_SCHEMA,
                 "overwrite": {"type": "boolean", "default": False},
             },
             "required": ["file"],
             "additionalProperties": False,
         },
         "handler": tool_export_report,
+    },
+    {
+        "name": "add_field",
+        "description": "Add a field (column) to a table. Rows already there get nothing in it.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                **_TARGET_PROPERTIES,
+                "table": {"type": "string"},
+                "label": {"type": "string", "description": "What people see, like 'Moved'."},
+                "name": {"type": "string", "description": "Name inside: letters, numbers, underscores. Made from the label if left out."},
+                "type": {"type": "string", "enum": list(FIELD_TYPES), "default": "text"},
+            },
+            "required": ["table", "label"],
+            "additionalProperties": False,
+        },
+        "handler": tool_add_field,
     },
     {
         "name": "rename_field",

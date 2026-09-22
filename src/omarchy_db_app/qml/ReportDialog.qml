@@ -13,10 +13,14 @@ Dialog {
     property int page: 0
     property bool ready: false
 
+    property var rowFilter: ({})        // {field, op, value} or {}
+
     function openFor(theTable, fields) {
         table = theTable
         allFields = fields
         picked = fields.map(f => f.name)
+        rowFilter = Bridge.filter && Bridge.filter.field ? Bridge.filter : {}
+        filterBox.checked = !!rowFilter.field
         titleField.text = theTable.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())
         nameField.text = ""
         sizeBox.currentIndex = 0
@@ -37,6 +41,8 @@ Dialog {
         const s = r.spec
         table = s.table
         picked = s.columns
+        rowFilter = s.filter && s.filter.field ? s.filter : {}
+        filterBox.checked = !!rowFilter.field
         titleField.text = s.title
         nameField.text = s.name
         sizeBox.currentIndex = Math.max(0, Report.pageSizes().indexOf(s.page_size))
@@ -60,6 +66,7 @@ Dialog {
             "fit_to_width": fitBox.checked,
             "font_pt": fontBox.value,
             "show_row_numbers": numbersBox.checked,
+            "filter": filterBox.checked && rowFilter.field ? rowFilter : null,
             "name": nameField.text
         }
     }
@@ -122,6 +129,22 @@ Dialog {
                         checked: dialog.picked.indexOf(modelData.name) >= 0
                         onToggled: dialog.toggle(modelData.name, checked)
                     }
+                }
+
+                Label { text: "Rows"; font.bold: true; Layout.topMargin: 6; visible: !!dialog.rowFilter.field }
+                CheckBox {
+                    id: filterBox
+                    visible: !!dialog.rowFilter.field
+                    text: "Only rows where " + (Report.spec.filter_words || Bridge.filterWords || "")
+                    onToggled: dialog.touched()
+                }
+                Label {
+                    visible: !dialog.rowFilter.field
+                    Layout.fillWidth: true
+                    text: "Every row. To print only some, filter the table first (Show rows where\u2026) and open this again."
+                    color: Theme.lightForeground
+                    font.pointSize: 10
+                    wrapMode: Text.WordWrap
                 }
 
                 Label { text: "Page"; font.bold: true; Layout.topMargin: 6 }

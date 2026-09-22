@@ -70,7 +70,81 @@ Dialog {
     }
 
     footer: DialogButtonBox {
+        ActionButton { text: "Add field\u2026"; onClicked: addDialog.openFor() }
         ActionButton { text: "Done"; primary: true; onClicked: dialog.close() }
+    }
+
+    // ---- add a field ------------------------------------------------------------
+    Dialog {
+        id: addDialog
+        objectName: "addFieldDialog"
+        property string addError: ""
+        property bool nameTouched: false
+        function openFor() {
+            addLabel.text = ""
+            addName.text = ""
+            nameTouched = false
+            addType.currentIndex = 0
+            addError = ""
+            open()
+            addLabel.forceActiveFocus()
+        }
+        function go() {
+            const r = Bridge.addField(addLabel.text.trim(), addName.text.trim(), addType.currentValue)
+            if (r.ok) close(); else addError = r.error
+        }
+        title: "Add a field to " + Bridge.currentTable
+        modal: true
+        anchors.centerIn: parent
+        width: 460
+        padding: 20
+        Overlay.modal: Rectangle { color: Theme.isDark ? "#99000000" : "#55000000" }
+        contentItem: ColumnLayout {
+            spacing: 8
+            Label { text: "Label"; font.bold: true }
+            TextField {
+                id: addLabel
+                Layout.fillWidth: true
+                placeholderText: "What people see, like Moved"
+                onTextEdited: { if (!addDialog.nameTouched) addName.text = Bridge.slugName(text) }
+                onAccepted: addDialog.go()
+            }
+            Label { text: "Name inside the database"; font.bold: true; Layout.topMargin: 6 }
+            TextField {
+                id: addName
+                Layout.fillWidth: true
+                font.family: Theme.monoFont
+                placeholderText: "made from the label"
+                onTextEdited: addDialog.nameTouched = true
+                onAccepted: addDialog.go()
+            }
+            Label { text: "Type"; font.bold: true; Layout.topMargin: 6 }
+            ComboBox {
+                id: addType
+                Layout.preferredWidth: 240
+                model: Bridge.fieldTypes()
+                textRole: "label"
+                valueRole: "key"
+            }
+            Label {
+                Layout.fillWidth: true
+                text: "Rows already there will have nothing in the new field."
+                color: Theme.lightForeground
+                font.pointSize: 10
+                wrapMode: Text.WordWrap
+            }
+            Label {
+                Layout.fillWidth: true
+                visible: addDialog.addError !== ""
+                text: addDialog.addError
+                color: Theme.red
+                wrapMode: Text.WordWrap
+            }
+        }
+        footer: DialogButtonBox {
+            ActionButton { text: "Cancel"; onClicked: addDialog.reject() }
+            ActionButton { text: "Add it"; primary: true; enabled: addLabel.text.trim() !== "" || addName.text.trim() !== ""; onClicked: addDialog.go() }
+        }
     }
 
     // ---- rename one field ------------------------------------------------------

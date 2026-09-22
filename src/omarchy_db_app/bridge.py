@@ -25,7 +25,8 @@ from PySide6.QtCore import (
 from omarchy_db import catalog, schema
 from omarchy_db.errors import OmarchyDBError
 from omarchy_db.exporter import export_table
-from omarchy_db.fields import FIELD_TYPE_LABELS, FIELD_TYPES, Field
+from omarchy_db.fields import FIELD_TYPE_LABELS, FIELD_TYPES, Field, slugify_name
+from omarchy_db.filters import OP_WORDS, OPS, filter_words, normalise_filter
 from omarchy_db.importer import import_spreadsheet, import_workbook, plan_import, workbook_plan
 from omarchy_db.paths import default_documents_dir, home
 from omarchy_db.reports import form_for
@@ -205,6 +206,10 @@ class Bridge(QObject):
         self._form_fields: list[dict[str, Any]] = []
         self._job: Job | None = None
         self._busy_text = ""
+        #: The active filter per table, kept for as long as the database is open.
+        self._filters: dict[str, dict[str, Any]] = {}
+        self._filter: dict[str, Any] | None = None
+        self._all_rows = 0
 
     def storage(self) -> Storage | None:
         return self._storage
@@ -284,6 +289,63 @@ class Bridge(QObject):
     @Slot(result="QVariantList")
     def fieldTypes(self) -> list[dict[str, str]]:  # noqa: N802
         return [{"key": key, "label": FIELD_TYPE_LABELS[key]} for key in FIELD_TYPES]
+
+    @Property("QVariantMap", notify=tableChanged)
+    def filter(self) -> dict[str, Any]:
+        """The current table's filter: {field, op, value}, or {} for all rows."""
+        if not self._filter:
+            return {}
+        out = dict(self._filter)
+        if isinstance(out.get("value"), bool):
+            out["value"] = "yes" if out["value"] else "no"
+        elif out.get("value") is not None:
+            out["value"] = str(out["value"])
+        return out
+
+    @Property(str, notify=tableChanged)
+    def filterWords(self) -> str:  # noqa: N802
+        """The rule in plain words, like "Moved is not Yes"; blank when showing all rows."""
+        if not self._filter:
+            return ""
+        fields = [Field(name=f["name"], type=f["type"], label=f["label"]) for f in self._fields]
+        return filter_words(fields, self._filter)
+
+    @Property(int, notify=tableChanged)
+    def allRows(self) -> int:  # noqa: N802
+        """How many rows the table has before the filter."""
+        return self._all_rows
+
+    @Slot(result="QVariantList")
+    def filterOps(self) -> list[dict[str, Any]]:  # noqa: N802
+        return [{"key": op, "label": OP_WORDS[op], "needsValue": op in ("is", "is_not", "contains")} for op in OPS]
+
+    @Slot(str, str, str, result="QVariantMap")
+    def setFilter(self, field: str, op: str, value: str) -> dict:  # noqa: N802
+        """Show only rows where <field> <op> <value>. Remembered per table while the database is open."""
+        if self._storage is None or not self._current_table:
+            return {"ok": False, "error": "Pick a table first."}
+        fields = [Field(name=f["name"], type=f["type"], label=f["label"]) for f in self._fields]
+        try:
+            spec = normalise_filter(fields, {"field": field, "op": op, "value": value})
+        except OmarchyDBError as error:
+            return {"ok": False, "error": str(error)}
+        if spec:
+            self._filters[self._current_table] = spec
+        else:
+            self._filters.pop(self._current_table, None)
+        return self.selectTable(self._current_table)
+
+    @Slot(result="QVariantMap")
+    def clearFilter(self) -> dict:  # noqa: N802
+        if not self._current_table:
+            return {"ok": False, "error": "Pick a table first."}
+        self._filters.pop(self._current_table, None)
+        return self.selectTable(self._current_table)
+
+    @Slot(str, result=str)
+    def slugName(self, label: str) -> str:  # noqa: N802
+        """"Vet's phone" -> "vet_s_phone": the name inside, made from a label."""
+        return slugify_name(label, fallback="field") if (label or "").strip() else ""
 
     @Property(int, notify=tableChanged)
     def shownRows(self) -> int:  # noqa: N802
@@ -580,6 +642,21 @@ class Bridge(QObject):
 
     # -- fields and tables ------------------------------------------------------
     @Slot(str, str, str, result="QVariantMap")
+    def addField(self, label: str, name: str, field_type: str) -> dict:  # noqa: N802
+        """Add a field to the current table. Rows already there get nothing in it."""
+        if self._storage is None or not self._current_table:
+            return {"ok": False, "error": "Pick a table first."}
+        try:
+            result = schema.add_field(
+                self._storage, self._current_table, label=label, name=name, field_type=field_type or "text"
+            )
+        except OmarchyDBError as error:
+            return {"ok": False, "error": str(error)}
+        self._refresh_tables(select=self._current_table)
+        self.message.emit(f"Added the field {result['fields'][-1]['label']}.")
+        return {"ok": True, "fields": result["fields"]}
+
+    @Slot(str, str, str, result="QVariantMap")
     def renameField(self, old: str, new: str, label: str) -> dict:  # noqa: N802
         """Change a field's name and/or label. Blank name means keep it."""
         if self._storage is None or not self._current_table:
@@ -657,12 +734,21 @@ class Bridge(QObject):
     def selectTable(self, table: str) -> dict:  # noqa: N802
         if self._storage is None:
             return {"ok": False, "error": "Open a database first."}
+        where = self._filters.get(table)
         try:
-            page = self._storage.list_rows(table, limit=PAGE_SIZE)
-        except OmarchyDBError as error:
-            return {"ok": False, "error": str(error)}
+            page = self._storage.list_rows(table, limit=PAGE_SIZE, where=where)
+        except OmarchyDBError:
+            # A filter that no longer fits (its field was renamed or deleted) is dropped, not fatal.
+            self._filters.pop(table, None)
+            where = None
+            try:
+                page = self._storage.list_rows(table, limit=PAGE_SIZE)
+            except OmarchyDBError as error:
+                return {"ok": False, "error": str(error)}
         self._rows.load(page)
         self._current_table = table
+        self._filter = page.get("filter")
+        self._all_rows = page.get("total_all", page["total"])
         self._fields = [dict(field) for field in page["fields"]]
         try:
             form = form_for(self._storage, table)
@@ -734,6 +820,8 @@ class Bridge(QObject):
         self._tables = []
         self._current_table = ""
         self._shown = self._total = 0
+        self._filters = {}
+        self._filter = None
         self._rows.clear()
         self.tablesChanged.emit()
         self.tableChanged.emit()
@@ -747,6 +835,8 @@ class Bridge(QObject):
             except Exception:  # noqa: BLE001
                 pass
         self._storage = storage
+        self._filters = {}
+        self._filter = None
         info = storage.describe()
         catalog.remember(
             title=info.title,
@@ -776,7 +866,8 @@ class Bridge(QObject):
         else:
             self._rows.clear()
             self._current_table = ""
-            self._shown = self._total = 0
+            self._filter = None
+            self._shown = self._total = self._all_rows = 0
             self.tableChanged.emit()
 
 

@@ -12,8 +12,24 @@ from typing import Any
 from .errors import OmarchyDBError
 from .paths import resolve_under_roots
 from .reports import FORM_KEY, REPORT_KEY, list_reports, load_form, load_report, normalise_spec
+from .fields import FIELD_TYPES, Field, slugify_name
 from .storage import SQLITE
 from .storage.base import Storage, TableInfo
+
+
+def add_field(
+    storage: Storage, table: str, *, label: str = "", name: str = "", field_type: str = "text"
+) -> dict[str, Any]:
+    """Add a field. The name inside comes from the label when not given."""
+    label = (label or "").strip()
+    name = (name or "").strip()
+    if not label and not name:
+        raise OmarchyDBError("Give the new field a label.")
+    name = name or slugify_name(label, fallback="field")
+    if field_type not in FIELD_TYPES:
+        raise OmarchyDBError(f"Unknown field type {field_type!r}. Use: {', '.join(FIELD_TYPES)}.")
+    info = storage.add_field(table, Field(name=name, type=field_type, label=label or None))
+    return _field_result(info, table)
 
 
 def rename_field(

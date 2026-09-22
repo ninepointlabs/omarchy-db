@@ -17,6 +17,7 @@ import json
 from typing import Any
 
 from .errors import BadName, OmarchyDBError
+from .filters import filter_words, normalise_filter
 from .paths import resolve_under_roots
 from .storage.base import Storage
 
@@ -63,11 +64,15 @@ def normalise_spec(storage: Storage, spec: dict[str, Any]) -> dict[str, Any]:
     font_pt = float(spec.get("font_pt", 10))
     font_pt = min(max(font_pt, 6.0), 16.0)
 
+    row_filter = normalise_filter(info.fields, spec.get("filter") or None)
+
     return {
         "name": str(spec.get("name") or ""),
         "table": table,
         "title": str(spec.get("title") or info.name.replace("_", " ").title()),
         "columns": columns,
+        "filter": row_filter,
+        "filter_words": filter_words(info.fields, row_filter),
         "labels": [known[name].title for name in columns],
         "types": [known[name].type for name in columns],
         "page_size": page_size,
@@ -93,7 +98,7 @@ def fetch_rows(storage: Storage, spec: dict[str, Any]) -> list[list[str]]:
     out: list[list[str]] = []
     offset = 0
     while len(out) < MAX_REPORT_ROWS:
-        page = storage.list_rows(spec["table"], limit=CHUNK, offset=offset)
+        page = storage.list_rows(spec["table"], limit=CHUNK, offset=offset, where=spec.get("filter"))
         if not page["rows"]:
             break
         positions = [page["columns"].index(name) for name in columns]

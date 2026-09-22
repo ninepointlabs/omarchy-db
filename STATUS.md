@@ -2,6 +2,57 @@
 
 **Phase B (forms, Excel, reports, printing). Last updated 2026-09-22.**
 
+## 2026-09-22 (later) — Add fields, and "Show rows where…"
+
+Tim's next asks: add a field to a table (a "Moved" yes/no), and hide rows on
+the main view by a field. Both landed, and reports can use the same rule.
+
+**Add field.** More… → Fields → **Add field…**: Label, Name inside (made
+from the label as you type, editable), Type (the same five as the import
+wizard). Rows already there get nothing in it. Storage `add_field` is
+`ALTER TABLE … ADD COLUMN` plus the field meta; the form shows the new
+field at the end. Bad or duplicate names are refused in words. MCP
+`add_field` (label, optional name, type).
+
+**Show rows where… (the main view).** A bar above the grid and the form:
+*Show rows where* [Field] [is / is not / is empty / is not empty / contains]
+[value] **Apply** **Clear**. The rule is positive on purpose: to hide people
+who moved, say "Moved is not Yes" (blank counts as not Yes). Yes/no fields
+take yes/no/true/false/1/0. The grid and the form both use the filtered set,
+so Previous / Next only walk matching rows; Delete row and Add row stay on
+the filtered view (a new row that does not match is saved and drops out of
+sight). The footer says "Showing 20 of 32 rows where Moved is not Yes".
+Clear is one click. The rule is remembered per table while the database is
+open, and dropped quietly if its field is renamed or deleted. "contains" is
+for words fields only.
+
+One helper, `omarchy_db/filters.py`, makes the SQL for everyone: the grid,
+the form, reports, the CLI (`rows --filter FIELD OP [VALUE]`) and MCP
+(`list_rows` takes `filter: {field, op, value}`). There is no free-form SQL:
+the field must be one of the table's, the match is one of five, and the value
+is bound as a parameter after being read the way the field's type wants.
+
+**Reports.** The report designer shows "Only rows where Moved is not Yes"
+(ticked) when the table has a filter on; untick it to print every row. The
+spec stores the filter, kept reports keep it, the PDF says "Only rows where
+…" under the title, and `create_report` / `export_report` in MCP take
+`filter` too. To print only some rows, filter the table first; the dialog
+says so when there is no filter.
+
+Tim's example, tried offscreen and in tests: import pets, Add field "Moved"
+(yes/no), mark two rows Yes, "Show rows where Moved is not Yes" → 2 of 4,
+the form walks those two, Print report shows 2 rows with the rule under the
+title.
+
+Tests: 152 pass (`tests/test_filters.py` is new: add field, every match on
+a yes/no field and on words/numbers/dates, blanks, refusals in words,
+injection-shaped values bound harmlessly, filter words, filtered reports;
+plus bridge and MCP tests).
+
+Not done, on purpose: AND/OR combinations, "any field", saved named
+queries. The filter is not written into the database file (it lives in the
+window); a kept report is the way to keep a rule.
+
 ## 2026-09-22 — Import every sheet, delete things, rename fields
 
 Tim's asks after the Tyler import, all landed:
@@ -189,8 +240,9 @@ unit test performs the same rm-rf-then-rename twice.
 
 ## Verified
 
-- `python -m pytest` — **143 passed** (127 after the Excel header fix plus
-  schema, import-all, bridge and MCP tests; the 127 were 123 after Phase B
+- `python -m pytest` — **152 passed** (143 after import-all/delete/rename
+  plus the filter and add-field tests; the 143 were 127 after the Excel
+  header fix plus schema, import-all, bridge and MCP tests; the 127 were 123 after Phase B
   plus the four Excel header tests; the 123 were 101 after A2, plus theme swap, editing,
   import worker, export, report bridge, xlsx round trip, sheet choice, saved
   formula values, column fitting, pagination, PDF bytes, printer path,
@@ -286,7 +338,7 @@ unit test performs the same rm-rf-then-rename twice.
 
 - Column renaming in the import wizard itself (rename after import via
   More… → Fields instead).
-- Filter and sort in the grid (the brief's "filter/sort simple" for table view).
+- Sort in the grid (filter is done; sorting by a column is not).
 - Reports: choose sort order; group headings; a header/footer of your own.
 - Open a database on the worker thread too (only imports are off-thread today).
 - A drag-over highlight while a file is being dropped on the window.
