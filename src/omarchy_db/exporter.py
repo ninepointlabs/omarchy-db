@@ -45,6 +45,7 @@ def export_table(
         )
 
     target.parent.mkdir(parents=True, exist_ok=True)
+    kinds = ([None] if include_id else []) + [f.type for f in info.fields]
     written = 0
     with target.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
@@ -57,7 +58,6 @@ def export_table(
                 break
             for row in page["rows"]:
                 values = row if include_id else row[1:]
-                kinds = ([None] if include_id else []) + [f.type for f in info.fields]
                 writer.writerow([_cell(value, kind) for value, kind in zip(values, kinds)])
                 written += 1
             offset += CHUNK

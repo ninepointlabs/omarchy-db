@@ -22,7 +22,7 @@ from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
 from omarchy_db import __version__, catalog  # noqa: E402
 from omarchy_db.errors import OmarchyDBError  # noqa: E402
-from omarchy_db.importer import import_spreadsheet  # noqa: E402
+from omarchy_db.importer import import_spreadsheet, plan_import  # noqa: E402
 from omarchy_db.paths import default_documents_dir  # noqa: E402
 from omarchy_db.storage import BACKENDS, SQLITE, create_database, open_database  # noqa: E402
 
@@ -213,8 +213,39 @@ class Window(Adw.ApplicationWindow):
             file = dialog.open_finish(result)
         except GLib.Error:
             return
+        path = file.get_path()
         try:
-            report = import_spreadsheet(self.storage, file.get_path(), if_exists="replace")
+            plan = plan_import(path)
+        except OmarchyDBError as error:
+            self.toast(str(error))
+            return
+
+        if self.storage.has_table(plan["table"]):
+            self._confirm_replace(path, plan["table"])
+            return
+        self._do_import(path, if_exists="error")
+
+    def _confirm_replace(self, path: str, table: str) -> None:
+        """Never lose rows without asking first."""
+        dialog = Adw.MessageDialog(
+            transient_for=self,
+            heading=f"Replace the table “{table}”?",
+            body="It is already in this database. Its rows will be thrown away.",
+        )
+        dialog.add_response("cancel", "Keep what I have")
+        dialog.add_response("replace", "Replace it")
+        dialog.set_response_appearance("replace", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.connect(
+            "response",
+            lambda _d, answer: self._do_import(path, if_exists="replace")
+            if answer == "replace"
+            else None,
+        )
+        dialog.present()
+
+    def _do_import(self, path: str, *, if_exists: str) -> None:
+        try:
+            report = import_spreadsheet(self.storage, path, if_exists=if_exists)
         except OmarchyDBError as error:
             self.toast(str(error))
             return

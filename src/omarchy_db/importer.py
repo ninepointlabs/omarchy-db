@@ -99,7 +99,8 @@ def import_spreadsheet(
     fields = list(fields)
 
     headers, rows = read_csv(path)
-    info = storage.create_table(table_name, fields, if_exists=if_exists)
+    existed = storage.has_table(table_name)
+    storage.create_table(table_name, fields, if_exists=if_exists)
 
     typed_rows: list[list[Any]] = []
     problems: list[str] = []
@@ -123,5 +124,5 @@ def import_spreadsheet(
         "rows_added": added,
         "notes": problems[:20],
         "note_count": len(problems),
-        "replaced_existing": if_exists == "replace" and info.row_count == 0,
+        "replaced_existing": existed and if_exists == "replace",
     }

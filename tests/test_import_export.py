@@ -132,3 +132,10 @@ def test_xlsx_and_pdf_export_say_they_are_coming(database, pets_csv: Path, sandb
     for kind in ("xlsx", "pdf"):
         with pytest.raises(OmarchyDBError, match="not built yet"):
             export_table(database, "pets", str(sandbox / f"out.{kind}"), file_format=kind)
+
+
+def test_the_report_says_when_a_table_was_replaced(database, pets_csv: Path):
+    first = import_spreadsheet(database, str(pets_csv))
+    assert first["replaced_existing"] is False
+    second = import_spreadsheet(database, str(pets_csv), if_exists="replace")
+    assert second["replaced_existing"] is True
