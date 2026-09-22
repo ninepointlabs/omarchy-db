@@ -13,7 +13,7 @@ ApplicationWindow {
     minimumWidth: 720
     minimumHeight: 480
     title: Bridge.isOpen ? Bridge.title + " — Omarchy-DB" : "Omarchy-DB"
-    color: palette.window
+    color: Theme.window
     font.pointSize: 11
 
     // A spreadsheet picked before any database exists: it becomes a new one.

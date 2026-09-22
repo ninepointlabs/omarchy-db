@@ -1,8 +1,17 @@
 """Omarchy's colours, read from the active theme so the window matches the desktop.
 
 `omarchy theme set` writes the chosen theme to
-`~/.local/state/omarchy/current/theme/colors.toml`. We read that file, build a
-Qt palette from it, and watch it so a theme change re-colours the open window.
+`~/.local/state/omarchy/current/theme/colors.toml`. We read that file and build
+a Qt palette from it.
+
+Following a theme change while the window is open needs care: theme-set does
+`rm -rf current/theme` and then `mv theme.next current/theme`, so a watch on
+`colors.toml` (or on the `theme` directory) goes stale the moment the theme
+changes. So we watch the parent, `~/.local/state/omarchy/current/`, which
+lives on, plus `theme.name` (rewritten in place), and re-arm the inner watches
+after every change. Events come in bursts, so a short timer collects them and
+the colours are read once, after the new directory is in place.
+
 When the file is missing (not on Omarchy, or a very old install) a plain dark
 palette is used instead.
 """
@@ -13,7 +22,7 @@ import os
 import tomllib
 from pathlib import Path
 
-from PySide6.QtCore import Property, QFileSystemWatcher, QObject, Signal, Slot
+from PySide6.QtCore import Property, QFileSystemWatcher, QObject, QTimer, Signal, Slot
 from PySide6.QtGui import QColor, QFont, QGuiApplication, QPalette
 
 FALLBACK = {
@@ -38,9 +47,14 @@ FALLBACK = {
 COLOR_KEYS = tuple(key for key in FALLBACK if key != "mode")
 
 
-def theme_dir() -> Path:
+def current_dir() -> Path:
+    """`~/.local/state/omarchy/current/` — the one path that survives a theme change."""
     base = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
-    return Path(base) / "omarchy" / "current" / "theme"
+    return Path(base) / "omarchy" / "current"
+
+
+def theme_dir() -> Path:
+    return current_dir() / "theme"
 
 
 def colors_file() -> Path:
@@ -105,26 +119,55 @@ class Theme(QObject):
 
     changed = Signal()
 
+    #: How long to wait after the last file event before reading the theme.
+    SETTLE_MS = 150
+
     def __init__(self, app: QGuiApplication | None = None, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._app = app
         self._colors = load_colors()
+        self._settle = QTimer(self)
+        self._settle.setSingleShot(True)
+        self._settle.setInterval(self.SETTLE_MS)
+        self._settle.timeout.connect(self._reload)
         self._watcher = QFileSystemWatcher(self)
+        self._watcher.fileChanged.connect(self._poke)
+        self._watcher.directoryChanged.connect(self._poke)
         self._watch()
-        self._watcher.fileChanged.connect(self._reload)
-        self._watcher.directoryChanged.connect(self._reload)
         self.apply()
 
+    def watched(self) -> list[str]:
+        return sorted(self._watcher.files() + self._watcher.directories())
+
     def _watch(self) -> None:
-        path = colors_file()
-        for candidate in (path, path.parent):
-            if candidate.exists() and str(candidate) not in self._watcher.files() + self._watcher.directories():
-                self._watcher.addPath(str(candidate))
+        """(Re-)arm the watches. Paths that vanished are dropped, ones that exist are added."""
+        if os.environ.get("OMARCHY_DB_THEME_FILE"):
+            wanted = [colors_file(), colors_file().parent]
+        else:
+            current = current_dir()
+            wanted = [current, current / "theme.name", theme_dir(), colors_file()]
+        wanted_text = {str(p) for p in wanted if p.exists()}
+        stale = [p for p in self._watcher.files() + self._watcher.directories() if p not in wanted_text]
+        if stale:
+            self._watcher.removePaths(stale)
+        have = set(self._watcher.files() + self._watcher.directories())
+        missing = [p for p in wanted_text if p not in have]
+        if missing:
+            self._watcher.addPaths(missing)
+
+    @Slot(str)
+    def _poke(self, _path: str = "") -> None:
+        # rm -rf + mv arrive as several events; wait for the dust to settle.
+        self._settle.start()
 
     @Slot()
     def _reload(self) -> None:
+        self._watch()
         fresh = load_colors()
-        self._watch()  # the file is replaced on theme change, so re-arm the watch
+        if not colors_file().exists():
+            # Mid-swap: the new directory is not there yet. Look again shortly.
+            self._settle.start()
+            return
         if fresh != self._colors:
             self._colors = fresh
             self.apply()
@@ -140,6 +183,20 @@ class Theme(QObject):
     @Property(bool, notify=changed)
     def isDark(self) -> bool:  # noqa: N802 - QML property name
         return self._colors.get("mode", "dark") != "light"
+
+    @Property(str, notify=changed)
+    def window(self) -> str:
+        """The window background: what `palette.window` would be, but live."""
+        return self.color("background") if self.isDark else self.color("dark_background")
+
+    @Property(str, notify=changed)
+    def base(self) -> str:
+        """Where rows and text fields sit."""
+        return self.color("dark_background") if self.isDark else self.color("background")
+
+    @Property(str, notify=changed)
+    def alternateBase(self) -> str:  # noqa: N802
+        return self.color("lighter_background") if self.isDark else self.color("dark_background")
 
     @Property(str, notify=changed)
     def uiFont(self) -> str:  # noqa: N802

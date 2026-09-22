@@ -6,7 +6,7 @@ Phase A2 is complete: the window is now a Qt Quick / QML desktop application
 over the unchanged Python core, CLI and MCP server. The one open item carried
 from Phase A remains: a live PostgreSQL and MySQL connect has still not been
 run on this machine (see [Not yet verified](#not-yet-verified)). Nothing from
-Phase B was started.
+Phase B has **not** been started (waiting on Tim).
 
 ## What changed in A2
 

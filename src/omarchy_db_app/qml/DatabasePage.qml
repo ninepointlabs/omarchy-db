@@ -5,7 +5,7 @@ import QtQuick.Layouts
 // One open database: its tables down the left, the rows of one table on the right.
 Page {
     id: page
-    background: Rectangle { color: palette.window }
+    background: Rectangle { color: Theme.window }
 
     header: ToolBar {
         height: 64
@@ -194,7 +194,7 @@ Page {
                         required property int column
                         implicitWidth: 100
                         implicitHeight: 34
-                        color: row % 2 === 0 ? palette.base : palette.alternateBase
+                        color: row % 2 === 0 ? Theme.base : Theme.alternateBase
                         Label {
                             anchors.fill: parent
                             anchors.leftMargin: 10

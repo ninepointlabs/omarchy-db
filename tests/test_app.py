@@ -222,3 +222,44 @@ def test_the_window_loads_and_shows_an_imported_table(app, bridge, sandbox, pets
     app.processEvents()
     assert window.title() == "Omarchy-DB"
     engine.deleteLater()
+
+
+def test_theme_follows_omarchy_theme_set_swapping_the_directory(app, tmp_path, monkeypatch):
+    """`omarchy theme set` does rm -rf current/theme; mv theme.next current/theme."""
+    import shutil
+
+    from PySide6.QtTest import QTest
+
+    from omarchy_db_app.theme import Theme
+
+    monkeypatch.delenv("OMARCHY_DB_THEME_FILE", raising=False)
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    current = tmp_path / "omarchy" / "current"
+    (current / "theme").mkdir(parents=True)
+    (current / "theme" / "colors.toml").write_text('mode = "dark"\naccent = "#111111"\n')
+    (current / "theme.name").write_text("one\n")
+
+    theme = Theme()
+    assert theme.accent == "#111111"
+    seen = []
+    theme.changed.connect(lambda: seen.append(theme.accent))
+
+    staging = current / "theme.next"
+    staging.mkdir()
+    (staging / "colors.toml").write_text('mode = "light"\naccent = "#222222"\n')
+    shutil.rmtree(current / "theme")
+    staging.rename(current / "theme")
+    (current / "theme.name").write_text("two\n")
+
+    QTest.qWait(700)
+    assert seen == ["#222222"]
+    assert theme.isDark is False
+
+    # And again, to prove the watches were re-armed after the first swap.
+    staging.mkdir()
+    (staging / "colors.toml").write_text('mode = "dark"\naccent = "#333333"\n')
+    shutil.rmtree(current / "theme")
+    staging.rename(current / "theme")
+    QTest.qWait(700)
+    assert seen == ["#222222", "#333333"]
+    assert str(current / "theme" / "colors.toml") in theme.watched()

@@ -11,7 +11,7 @@ Page {
     Component.onCompleted: reload()
     StackView.onActivated: reload()
 
-    background: Rectangle { color: palette.window }
+    background: Rectangle { color: Theme.window }
 
     ColumnLayout {
         anchors.fill: parent
