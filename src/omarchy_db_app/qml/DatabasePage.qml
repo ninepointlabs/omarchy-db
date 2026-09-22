@@ -21,6 +21,32 @@ Page {
     }
 
     FieldsDialog { id: fieldsDialog }
+    AddFieldDialog { id: addFieldDialog }
+    RenameFieldDialog { id: renameFieldDialog }
+
+    Dialog {
+        id: deleteFieldConfirm
+        property string fieldName: ""
+        property string fieldLabel: ""
+        function ask(field) { fieldName = field.name; fieldLabel = field.label; open() }
+        title: "Delete the field \u201c" + fieldLabel + "\u201d?"
+        modal: true
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: 460
+        padding: 20
+        Overlay.modal: Rectangle { color: Theme.isDark ? "#99000000" : "#55000000" }
+        contentItem: Label {
+            text: "Everything in that column, in every row, will be gone. This cannot be undone."
+            wrapMode: Text.WordWrap
+        }
+        footer: DialogButtonBox {
+            ActionButton { text: "Keep it"; DialogButtonBox.buttonRole: DialogButtonBox.RejectRole }
+            ActionButton { text: "Delete it"; primary: true; DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole }
+        }
+        onAccepted: { const r = Bridge.deleteField(fieldName); if (!r.ok) toast.show(r.error); fieldsDialog.openFor() }
+        onRejected: fieldsDialog.openFor()
+    }
 
     Dialog {
         id: confirmDeleteTable
@@ -289,7 +315,8 @@ Page {
                         Menu {
                             id: moreMenu
                             y: parent.height
-                            MenuItem { text: "Fields: rename or delete\u2026"; onTriggered: fieldsDialog.openFor() }
+                            MenuItem { text: "Add field\u2026"; objectName: "menuAddField"; onTriggered: addFieldDialog.openFor(false) }
+                            MenuItem { text: "Fields: add, rename or delete\u2026"; onTriggered: fieldsDialog.openFor() }
                             MenuSeparator {}
                             MenuItem { text: "Delete this table\u2026"; onTriggered: confirmDeleteTable.ask() }
                             MenuItem { text: "Delete this whole database\u2026"; enabled: Bridge.isLocalFile; onTriggered: confirmDeleteDatabase.open() }

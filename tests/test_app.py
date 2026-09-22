@@ -628,3 +628,80 @@ def test_a_default_view_opens_with_the_table(bridge, sandbox, pets_csv):
     assert bridge.totalRows == 4  # the default is offered once per session, not forced
     assert bridge.deleteView("Good ones")["ok"] is True
     assert bridge.views == []
+
+
+# -- the Add field dialog, through the QML itself ------------------------------------------
+
+def test_add_field_through_the_window(app, bridge, sandbox, pets_csv):
+    """The path Tim uses: More… → Add field…, type a label, pick yes/no, Add it."""
+    from PySide6.QtCore import Q_ARG, QMetaObject
+    from PySide6.QtQml import QQmlApplicationEngine
+
+    from omarchy_db_app.report_bridge import Report, ReportImageProvider
+    from omarchy_db_app.theme import Theme
+
+    engine = QQmlApplicationEngine()
+    provider = ReportImageProvider()
+    engine.addImageProvider("report", provider)
+    engine.rootContext().setContextProperty("Bridge", bridge)
+    engine.rootContext().setContextProperty("Report", Report(bridge.storage, provider))
+    engine.rootContext().setContextProperty("Theme", Theme(app))
+    engine.load(QUrl.fromLocalFile(str(QML_DIR / "Main.qml")))
+    window = engine.rootObjects()[0]
+    assert bridge.importIntoNew(str(pets_csv), str(sandbox / "ui.omadb"))["ok"] is True
+    app.processEvents()
+
+    dialog = window.findChild(QObject, "addFieldDialog")
+    assert dialog is not None, "the Add field dialog is not at page level"
+    assert QMetaObject.invokeMethod(dialog, "openFor", Q_ARG("QVariant", False))
+    app.processEvents()
+    assert dialog.property("visible") is True
+    label = dialog.findChild(QObject, "addFieldLabel")
+    name = dialog.findChild(QObject, "addFieldName")
+    kind = dialog.findChild(QObject, "addFieldType")
+    label.setProperty("text", "Moved")
+    QMetaObject.invokeMethod(label, "textEdited")     # what typing does: the name follows
+    app.processEvents()
+    assert name.property("text") == "moved"
+    types = [t["key"] for t in bridge.fieldTypes()]
+    kind.setProperty("currentIndex", types.index("boolean"))
+    go = dialog.findChild(QObject, "addFieldGo")
+    assert go.property("enabled") is True
+    QMetaObject.invokeMethod(go, "clicked")
+    app.processEvents()
+
+    assert dialog.property("visible") is False
+    assert bridge.fields[-1] == {"name": "moved", "type": "boolean", "label": "Moved"}
+    assert bridge.rows.columnCount() == 7
+    assert [bridge.rows.record(i)["values"]["moved"] for i in range(4)] == [False] * 4
+    grid = [c for c in window.findChildren(QObject) if c.metaObject().className() == "QQuickTableView"][0]
+    assert grid.property("columns") == 7
+
+    # From the Fields list: Add field… closes the list, and the list comes back afterwards.
+    fields_dialog = window.findChild(QObject, "fieldsDialog")
+    QMetaObject.invokeMethod(fields_dialog, "openFor")
+    app.processEvents()
+    add_button = fields_dialog.findChild(QObject, "fieldsAddButton")
+    QMetaObject.invokeMethod(add_button, "clicked")
+    app.processEvents()
+    assert fields_dialog.property("visible") is False
+    assert dialog.property("visible") is True
+    label.setProperty("text", "Notes")
+    QMetaObject.invokeMethod(label, "textEdited")
+    QMetaObject.invokeMethod(go, "clicked")
+    app.processEvents()
+    assert dialog.property("visible") is False
+    assert fields_dialog.property("visible") is True
+    assert [f["name"] for f in bridge.fields][-2:] == ["moved", "notes"]
+
+    # A duplicate is refused in words and the dialog stays open.
+    QMetaObject.invokeMethod(fields_dialog, "close")
+    QMetaObject.invokeMethod(dialog, "openFor", Q_ARG("QVariant", False))
+    label.setProperty("text", "Moved")
+    QMetaObject.invokeMethod(label, "textEdited")
+    QMetaObject.invokeMethod(go, "clicked")
+    app.processEvents()
+    assert dialog.property("visible") is True
+    assert "already a field" in dialog.property("error")
+    QMetaObject.invokeMethod(dialog, "close")
+    engine.deleteLater()

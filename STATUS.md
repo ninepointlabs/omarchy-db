@@ -2,6 +2,46 @@
 
 **Phase B (forms, Excel, reports, printing). Last updated 2026-09-22.**
 
+## Fix 2026-09-22 — "It looks like we cannot add fields"
+
+**What Tim hit.** He wanted a Moved (yes / no) field on his Tyler list and
+could not add one from the window.
+
+**What was wrong.** Two things. Add field was hard to find: the More… menu
+said "Fields: rename or delete…" (no mention of Add), and the only Add
+button sat in the footer of the Fields list. And when found, it opened a
+`Dialog` nested inside the Fields `Dialog`; a modal inside a modal is
+unreliable in Qt Quick (it can show behind its parent or not take focus).
+The core and bridge were fine all along.
+
+**What changed.**
+- More… now has **Add field…** as its own item at the top, and the list
+  item reads "Fields: add, rename or delete…".
+- The Fields list starts with a big **Add field…** button and a one-line
+  hint; the footer is just Done.
+- The Add, Rename and Delete-field dialogs are their own components at page
+  level (`AddFieldDialog.qml`, `RenameFieldDialog.qml`, and the delete
+  confirm in `DatabasePage.qml`), parented on the window overlay, never
+  inside another dialog. Opening one from the Fields list closes the list
+  and brings it back when the dialog is done or cancelled.
+- Every footer button in these dialogs has a `DialogButtonBox` role.
+
+**How to add a field now.** Open the table → **More…** → **Add field…** →
+type the label (the name inside fills in) → pick the type (Yes / No for
+Moved) → **Add it**. Or More… → Fields… → Add field….
+
+**Proved.** A new test drives the real QML objects: opens the dialog from
+More…, types Moved, picks Yes / No, presses Add it, and checks the grid has
+the column blank in every row; then the same from the Fields list, and a
+duplicate refused in words with the dialog staying open. Run offscreen on a
+copy of Tim's Tyler file: Moved added to `consolidated_list`, blank in all
+25 rows, the saved view "Mail Status Good" untouched (screenshots
+inspected). Tim's own file already had a `moved` yes / no field on
+`consolidated_list` by the time this fix was made (16 fields, added 06:54),
+so nothing was added to it; it was left as it is.
+
+162 tests pass.
+
 ## 2026-09-22 (evening) — Saved views: named filters that stick
 
 Tim's follow-up: a filter worth keeping should not have to be typed again.
@@ -287,7 +327,8 @@ unit test performs the same rm-rf-then-rename twice.
 
 ## Verified
 
-- `python -m pytest` — **161 passed** (152 after filters and add-field plus
+- `python -m pytest` — **162 passed** (161 after saved views plus the Add
+  field window test; the 161 were 152 after filters and add-field plus
   the saved-view tests; the 152 were 143 after import-all/delete/rename
   plus the filter and add-field tests; the 143 were 127 after the Excel
   header fix plus schema, import-all, bridge and MCP tests; the 127 were 123 after Phase B

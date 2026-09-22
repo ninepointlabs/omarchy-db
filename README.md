@@ -115,7 +115,8 @@ Inside a database: **Grid** and **Form** show the same table two ways.
 **Add row** and **Delete row** do what they say. **Show rows where…** hides
 rows that do not match; **Clear** brings them back; **Views…** keeps a rule
 under a name and applies it again later. **More…** holds the rest:
-add, rename or delete fields, delete the table, delete the whole database file.
+**Add field…**, the Fields list (rename or delete), delete the table, delete
+the whole database file.
 **Print report** opens the report designer with a live preview, **Print…**
 and **Save PDF…**. **Export…** writes the table as CSV or Excel.
 
