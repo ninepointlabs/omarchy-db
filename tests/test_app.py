@@ -199,8 +199,13 @@ def test_the_window_loads_and_shows_an_imported_table(app, bridge, sandbox, pets
 
     from omarchy_db_app.theme import Theme
 
+    from omarchy_db_app.report_bridge import Report, ReportImageProvider
+
     engine = QQmlApplicationEngine()
+    provider = ReportImageProvider()
+    engine.addImageProvider("report", provider)
     engine.rootContext().setContextProperty("Bridge", bridge)
+    engine.rootContext().setContextProperty("Report", Report(bridge.storage, provider))
     engine.rootContext().setContextProperty("Theme", Theme(app))
     engine.load(QUrl.fromLocalFile(str(QML_DIR / "Main.qml")))
     assert len(engine.rootObjects()) == 1, "Main.qml did not load"
@@ -326,3 +331,83 @@ def test_grid_edit_goes_through_set_data(pets):
     assert model.setData(model.index(0, 2), "lots") is False
     assert heard and "whole number" in heard[0]
     assert model.setData(model.index(0, 0), "7") is False
+
+
+# -- the import wizard and the worker thread ------------------------------------
+
+def test_plan_import_and_import_planned_off_the_gui_thread(bridge, sandbox, pets_csv):
+    from PySide6.QtTest import QTest
+
+    bridge.newDatabase("sqlite", str(sandbox / "w.omadb"), "W", {})
+    plan = bridge.planImport(str(pets_csv), "")
+    assert plan["ok"] is True
+    assert plan["table"] == "pets"
+    assert plan["exists"] is False
+    assert [f["type"] for f in plan["fields"]][:2] == ["text", "integer"]
+
+    # Change a guess: keep age as words, and call the table something else.
+    fields = [dict(f) for f in plan["fields"]]
+    fields[1]["type"] = "text"
+    results = []
+    bridge.importFinished.connect(results.append)
+    started = bridge.importPlanned(str(pets_csv), "", "animals", fields, False)
+    assert started == {"ok": True, "pending": True}
+    assert bridge.busy is True
+    QTest.qWait(50)
+    for _ in range(100):
+        if results:
+            break
+        QTest.qWait(50)
+    assert results and results[0]["ok"] is True, results
+    assert results[0]["table"] == "animals"
+    assert results[0]["rowsAdded"] == 4
+    assert bridge.busy is False
+    assert bridge.currentTable == "animals"
+    assert bridge.fields[1]["type"] == "text"
+    assert bridge.rows.record(0)["values"]["age"] == "4"
+
+    # A second import of the same table asks first, synchronously.
+    again = bridge.importPlanned(str(pets_csv), "", "animals", [], False)
+    assert again["needsConfirm"] is True
+
+
+def test_export_table_from_the_window(bridge, sandbox, pets_csv):
+    pytest.importorskip("openpyxl")
+    bridge.importIntoNew(str(pets_csv), str(sandbox / "e.omadb"))
+    out = bridge.exportTable(QUrl.fromLocalFile(str(sandbox / "out.xlsx")).toString(), "xlsx")
+    assert out["ok"] is True
+    assert out["rows"] == 4
+    assert (sandbox / "out.xlsx").exists()
+    assert bridge.exportTable("/etc/out.csv", "csv")["ok"] is False
+
+
+def test_report_bridge_builds_previews_and_keeps(app, bridge, sandbox, pets_csv):
+    from omarchy_db_app.report_bridge import Report, ReportImageProvider
+
+    bridge.importIntoNew(str(pets_csv), str(sandbox / "r.omadb"))
+    provider = ReportImageProvider()
+    report = Report(bridge.storage, provider)
+    built = report.build({"table": "pets", "title": "All pets", "columns": ["name", "age"], "margins_mm": "20"})
+    assert built["ok"] is True
+    assert built["pages"] == 1
+    assert report.spec["columns"] == ["name", "age"]
+    assert report.previewSource(0).startswith("image://report/0?")
+    from PySide6.QtCore import QSize
+
+    image = provider.requestImage("0?1", QSize(), QSize(400, 0))
+    assert image.width() == 400
+    assert image.height() > image.width()  # portrait
+
+    saved = report.savePdf(QUrl.fromLocalFile(str(sandbox / "pets.pdf")).toString())
+    assert saved["ok"] is True
+    assert (sandbox / "pets.pdf").read_bytes().startswith(b"%PDF")
+
+    assert report.keep("Names and ages")["ok"] is True
+    assert [r["name"] for r in report.kept()] == ["Names and ages"]
+    report.build({"table": "pets"})
+    loaded = report.load("Names and ages")
+    assert loaded["ok"] is True
+    assert loaded["spec"]["columns"] == ["name", "age"]
+    assert report.forget("Names and ages")["ok"] is True
+    assert report.build({"table": "pets", "columns": ["nope"]})["ok"] is False
+    assert "nope" in report.error

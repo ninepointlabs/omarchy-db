@@ -16,6 +16,7 @@ from PySide6.QtCore import (
     QModelIndex,
     QObject,
     Qt,
+    QThread,
     QUrl,
     Signal,
     Slot,
@@ -23,8 +24,11 @@ from PySide6.QtCore import (
 
 from omarchy_db import catalog
 from omarchy_db.errors import OmarchyDBError
+from omarchy_db.exporter import export_table
+from omarchy_db.fields import FIELD_TYPE_LABELS, FIELD_TYPES, Field
 from omarchy_db.importer import import_spreadsheet, plan_import
 from omarchy_db.paths import default_documents_dir, home
+from omarchy_db.reports import form_for
 from omarchy_db.storage import BACKENDS, SQLITE, Storage, create_database, open_database
 
 PAGE_SIZE = 500
@@ -158,12 +162,34 @@ class RowsModel(QAbstractTableModel):
         return kind or "id"
 
 
+class Job(QThread):
+    """Run one function off the GUI thread and hand its result back as a dict."""
+
+    done = Signal("QVariantMap")
+
+    def __init__(self, work, parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self._work = work
+
+    def run(self) -> None:
+        try:
+            result = dict(self._work())
+            result.setdefault("ok", True)
+        except OmarchyDBError as error:
+            result = {"ok": False, "error": str(error)}
+        except Exception as error:  # noqa: BLE001 - the window must hear about it, not crash
+            result = {"ok": False, "error": f"Something went wrong: {error}"}
+        self.done.emit(result)
+
+
 class Bridge(QObject):
     """Open one database at a time and answer the window's questions about it."""
 
     databaseChanged = Signal()
     tablesChanged = Signal()
     tableChanged = Signal()
+    busyChanged = Signal()
+    importFinished = Signal("QVariantMap")
     message = Signal(str)
 
     def __init__(self, parent: QObject | None = None) -> None:
@@ -176,6 +202,40 @@ class Bridge(QObject):
         self._rows = RowsModel(self)
         self._rows.editor = self._edit_cell
         self._fields: list[dict[str, Any]] = []
+        self._form_fields: list[dict[str, Any]] = []
+        self._job: Job | None = None
+        self._busy_text = ""
+
+    def storage(self) -> Storage | None:
+        return self._storage
+
+    @Property(bool, notify=busyChanged)
+    def busy(self) -> bool:
+        return self._job is not None
+
+    @Property(str, notify=busyChanged)
+    def busyText(self) -> str:  # noqa: N802
+        return self._busy_text
+
+    def _start(self, text: str, work, on_done) -> dict:
+        if self._job is not None:
+            return {"ok": False, "error": "Still working on the last thing. One moment."}
+        self._busy_text = text
+        self._job = Job(work, self)
+
+        def finished(result: dict) -> None:
+            job = self._job
+            self._job = None
+            self._busy_text = ""
+            self.busyChanged.emit()
+            if job is not None:
+                job.deleteLater()
+            on_done(dict(result))
+
+        self._job.done.connect(finished)
+        self._job.start()
+        self.busyChanged.emit()
+        return {"ok": True, "pending": True}
 
     # -- what the window can read ---------------------------------------
     @Property(QObject, constant=True)
@@ -210,6 +270,15 @@ class Bridge(QObject):
     def fields(self) -> list[dict[str, Any]]:
         """The current table's fields: name, label, type. What the form is built from."""
         return list(self._fields)
+
+    @Property("QVariantList", notify=tableChanged)
+    def formFields(self) -> list[dict[str, Any]]:  # noqa: N802
+        """The fields in the order and with the labels the table's form asks for."""
+        return list(self._form_fields)
+
+    @Slot(result="QVariantList")
+    def fieldTypes(self) -> list[dict[str, str]]:  # noqa: N802
+        return [{"key": key, "label": FIELD_TYPE_LABELS[key]} for key in FIELD_TYPES]
 
     @Property(int, notify=tableChanged)
     def shownRows(self) -> int:  # noqa: N802
@@ -327,6 +396,88 @@ class Bridge(QObject):
             return made
         return self.importSpreadsheet(spreadsheet, True)
 
+    @Slot(str, str, result="QVariantMap")
+    def planImport(self, spreadsheet: str, sheet: str) -> dict:  # noqa: N802
+        """What a spreadsheet would become: the wizard shows this and lets people change it."""
+        try:
+            plan = plan_import(self.localPath(spreadsheet), sheet=sheet or None)
+        except OmarchyDBError as error:
+            return {"ok": False, "error": str(error)}
+        plan["ok"] = True
+        plan["exists"] = bool(self._storage and self._storage.has_table(plan["table"]))
+        return plan
+
+    @Slot(str, str, str, "QVariantList", bool, result="QVariantMap")
+    def importPlanned(self, spreadsheet: str, sheet: str, table: str, fields: list, replace: bool) -> dict:  # noqa: N802
+        """Import with the wizard's choices: table name and each column's type.
+
+        For a file database the work runs on a worker thread with its own
+        connection, so a big spreadsheet does not freeze the window; the result
+        arrives through `importFinished`. A server database imports in place.
+        """
+        if self._storage is None:
+            return {"ok": False, "error": "Open a database first."}
+        path = self.localPath(spreadsheet)
+        try:
+            chosen = [Field(name=f["name"], type=f["type"], label=f.get("label") or None) for f in fields] or None
+            table = (table or "").strip() or None
+            if not replace:
+                plan = plan_import(path, sheet=sheet or None)
+                if self._storage.has_table(table or plan["table"]):
+                    return {"ok": False, "needsConfirm": True, "table": table or plan["table"]}
+        except ValueError as error:
+            return {"ok": False, "error": str(error)}
+        except OmarchyDBError as error:
+            return {"ok": False, "error": str(error)}
+
+        if_exists = "replace" if replace else "error"
+
+        if self._storage.backend != SQLITE:
+            try:
+                report = import_spreadsheet(
+                    self._storage, path, table=table, fields=chosen, sheet=sheet or None, if_exists=if_exists
+                )
+            except (ValueError, OmarchyDBError) as error:
+                return {"ok": False, "error": str(error)}
+            return self._imported(report)
+
+        location = self._storage.location()
+
+        def work() -> dict:
+            with open_database(backend=SQLITE, path=location) as own:
+                return import_spreadsheet(
+                    own, path, table=table, fields=chosen, sheet=sheet or None, if_exists=if_exists
+                )
+
+        def done(result: dict) -> None:
+            if result.get("ok", True) and "table" in result:
+                result = self._imported(result)
+            self.importFinished.emit(result)
+
+        return self._start("Importing…", work, done)
+
+    def _imported(self, report: dict) -> dict:
+        self._refresh_tables(select=report["table"])
+        note = f" {report['note_count']} cells did not fit and were kept as words." if report["note_count"] else ""
+        self.message.emit(f"Added {report['rows_added']} rows to {report['table']}.{note}")
+        return {"ok": True, "table": report["table"], "rowsAdded": report["rows_added"],
+                "noteCount": report["note_count"], "notes": list(report["notes"])}
+
+    @Slot(str, str, result="QVariantMap")
+    def exportTable(self, url: str, file_format: str) -> dict:  # noqa: N802
+        """Write the current table out. The save dialog already asked about replacing."""
+        if self._storage is None or not self._current_table:
+            return {"ok": False, "error": "Pick a table first."}
+        try:
+            result = export_table(
+                self._storage, self._current_table, self.localPath(url),
+                file_format=file_format, overwrite=True,
+            )
+        except OmarchyDBError as error:
+            return {"ok": False, "error": str(error)}
+        self.message.emit(f"Wrote {result['rows_written']} rows to {Path(result['file']).name}.")
+        return {"ok": True, "file": result["file"], "rows": result["rows_written"]}
+
     @Slot(str, bool, result="QVariantMap")
     def importSpreadsheet(self, spreadsheet: str, replace: bool) -> dict:  # noqa: N802
         if self._storage is None:
@@ -357,6 +508,15 @@ class Bridge(QObject):
         self._rows.load(page)
         self._current_table = table
         self._fields = [dict(field) for field in page["fields"]]
+        try:
+            form = form_for(self._storage, table)
+            kinds = {f["name"]: f["type"] for f in self._fields}
+            self._form_fields = [
+                {"name": name, "label": form["labels"].get(name, name), "type": kinds[name]}
+                for name in form["fields"] if name in kinds
+            ]
+        except OmarchyDBError:
+            self._form_fields = list(self._fields)
         self._shown = len(page["rows"])
         self._total = page["total"]
         self.tableChanged.emit()

@@ -20,7 +20,7 @@ Item {
             rowIndex = -1
             rowId = 0
             const blank = {}
-            for (const f of Bridge.fields)
+            for (const f of Bridge.formFields)
                 blank[f.name] = f.type === "boolean" ? false : ""
             edits = blank
         } else {
@@ -31,7 +31,7 @@ Item {
         }
         dirty = false
         fieldsRepeater.model = []      // rebuild the editors so they show the new values
-        fieldsRepeater.model = Bridge.fields
+        fieldsRepeater.model = Bridge.formFields
     }
 
     function set(name, value) {
@@ -107,7 +107,7 @@ Item {
 
                 Repeater {
                     id: fieldsRepeater
-                    model: Bridge.fields
+                    model: Bridge.formFields
 
                     delegate: Item {
                         id: cell

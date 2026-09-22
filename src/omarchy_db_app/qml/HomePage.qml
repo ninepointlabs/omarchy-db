@@ -37,7 +37,7 @@ Page {
             spacing: 16
             BigButton { text: "New database"; hint: "Start with nothing in it"; primary: true; onClicked: win.startNew() }
             BigButton { text: "Open a database"; hint: "One you already made"; onClicked: win.startOpen() }
-            BigButton { text: "Import a spreadsheet"; hint: "A CSV file becomes a database"; onClicked: win.startImport() }
+            BigButton { text: "Import a spreadsheet"; hint: "A CSV or Excel file becomes a database"; onClicked: win.startImport() }
         }
 
         Label {

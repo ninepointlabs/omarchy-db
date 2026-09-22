@@ -79,6 +79,23 @@ Page {
             }
             ActionButton { text: "Open another"; onClicked: win.startOpen() }
             ActionButton {
+                text: "Export…"
+                enabled: Bridge.currentTable !== ""
+                onClicked: exportMenu.open()
+                Menu {
+                    id: exportMenu
+                    y: parent.height
+                    MenuItem { text: "CSV file"; onTriggered: win.startExport("csv") }
+                    MenuItem { text: "Excel file (.xlsx)"; onTriggered: win.startExport("xlsx") }
+                    MenuItem { text: "PDF (print report)…"; onTriggered: win.startReport() }
+                }
+            }
+            ActionButton {
+                text: "Print report"
+                enabled: Bridge.currentTable !== ""
+                onClicked: win.startReport()
+            }
+            ActionButton {
                 text: "Import spreadsheet"
                 primary: true
                 onClicked: win.startImport()

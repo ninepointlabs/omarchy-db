@@ -11,25 +11,29 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QUrl
-from PySide6.QtGui import QGuiApplication, QIcon
+from PySide6.QtGui import QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
+from PySide6.QtWidgets import QApplication
 
 from omarchy_db import __version__
 
 from .bridge import Bridge
+from .report_bridge import Report, ReportImageProvider
 from .theme import Theme
 
 QML_DIR = Path(__file__).resolve().parent / "qml"
 APP_ID = "omarchy-db"
 
 
-def make_app(argv: list[str]) -> QGuiApplication:
+def make_app(argv: list[str]) -> QApplication:
     # Fusion is the one built-in Qt Quick style that paints from the palette,
     # which is how the Omarchy theme colours reach every control.
     os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Fusion")
     QQuickStyle.setStyle(os.environ["QT_QUICK_CONTROLS_STYLE"])
-    app = QGuiApplication(argv)
+    # QApplication rather than QGuiApplication only because the system print
+    # dialog is a widget. The UI itself is all QML.
+    app = QApplication(argv)
     app.setApplicationName("Omarchy-DB")
     app.setApplicationDisplayName("Omarchy-DB")
     app.setOrganizationName("Nine Point Labs")
@@ -47,9 +51,14 @@ def main(argv: list[str] | None = None) -> int:
     app = make_app(argv)
     theme = Theme(app)
     bridge = Bridge()
+    provider = ReportImageProvider()
+    report = Report(bridge.storage, provider)
+    report.message.connect(bridge.message)
 
     engine = QQmlApplicationEngine()
+    engine.addImageProvider("report", provider)
     engine.rootContext().setContextProperty("Bridge", bridge)
+    engine.rootContext().setContextProperty("Report", report)
     engine.rootContext().setContextProperty("Theme", theme)
     engine.load(QUrl.fromLocalFile(str(QML_DIR / "Main.qml")))
     if not engine.rootObjects():

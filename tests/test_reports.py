@@ -123,3 +123,28 @@ def test_reports_are_remembered_and_listed(database, pets_csv: Path):
     assert delete_report(database, "Good pets") is True
     assert delete_report(database, "Good pets") is False
     assert [r["name"] for r in list_reports(database)] == ["Everything"]
+
+
+def test_the_printer_path_paints_the_same_pages(database, pets_csv: Path, sandbox: Path):
+    """`print_to` is what the system print dialog hands a QPrinter to."""
+    pytest.importorskip("PySide6")
+    import os
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtPrintSupport import QPrinter
+
+    from omarchy_db.printing import ReportDocument, ensure_gui_app
+    from omarchy_db.reports import fetch_rows, normalise_spec
+
+    ensure_gui_app()
+    import_spreadsheet(database, str(pets_csv))
+    spec = normalise_spec(database, {"table": "pets", "orientation": "landscape"})
+    document = ReportDocument(spec, fetch_rows(database, spec))
+    printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+    printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
+    printer.setOutputFileName(str(sandbox / "printed.pdf"))
+    assert document.print_to(printer) == 1
+    assert (sandbox / "printed.pdf").read_bytes().startswith(b"%PDF")
+    preview = document.preview_image(0, 300)
+    assert preview.width() == 300
+    assert preview.width() > preview.height()  # landscape

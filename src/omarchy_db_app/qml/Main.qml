@@ -68,22 +68,28 @@ ApplicationWindow {
 
     function importFile(url) {
         if (!Bridge.isOpen) {
-            // First run: the spreadsheet becomes a brand new database.
+            // First run: the spreadsheet becomes a brand new database, then the wizard opens.
             win.pendingSpreadsheet = url
             saveDbDialog.selectedFile = Bridge.documentsFolder() + "/" + Bridge.suggestedDatabaseName(url)
             saveDbDialog.open()
             return
         }
-        const r = Bridge.importSpreadsheet(url, false)
-        if (r.ok)
+        importWizard.openFor(url)
+    }
+
+    function startReport() {
+        if (Bridge.isOpen && Bridge.currentTable !== "")
+            reportDialog.openFor(Bridge.currentTable, Bridge.fields)
+    }
+
+    function startExport(format) {
+        if (!Bridge.isOpen || Bridge.currentTable === "")
             return
-        if (r.needsConfirm) {
-            replaceDialog.table = r.table
-            replaceDialog.spreadsheet = url
-            replaceDialog.open()
-        } else {
-            toast.show(r.error)
-        }
+        exportDialog.format = format
+        exportDialog.nameFilters = format === "xlsx" ? ["Excel files (*.xlsx)"] : ["CSV files (*.csv)"]
+        exportDialog.defaultSuffix = format
+        exportDialog.selectedFile = Bridge.documentsFolder() + "/" + Bridge.currentTable + "." + format
+        exportDialog.open()
     }
 
     function dropped(urls) {
@@ -116,8 +122,11 @@ ApplicationWindow {
         onAccepted: {
             let r
             if (win.pendingSpreadsheet !== "") {
-                r = Bridge.importIntoNew(win.pendingSpreadsheet, selectedFile)
+                const sheet = win.pendingSpreadsheet
                 win.pendingSpreadsheet = ""
+                r = Bridge.newDatabase("sqlite", selectedFile, Bridge.suggestedDatabaseName(sheet).replace(/\.omadb$/, "").replace(/[-_]/g, " "), {})
+                if (r.ok)
+                    importWizard.openFor(sheet)
             } else {
                 r = Bridge.newDatabase("sqlite", selectedFile, newDialog.chosenTitle, {})
             }
@@ -138,15 +147,44 @@ ApplicationWindow {
     FileDialog {
         id: importDialog
         title: "Pick a spreadsheet"
-        nameFilters: ["Spreadsheets (*.csv *.tsv *.txt)", "All files (*)"]
+        nameFilters: ["Spreadsheets (*.csv *.tsv *.txt *.xlsx *.xlsm)", "All files (*)"]
         currentFolder: Bridge.homeFolder()
         onAccepted: win.importFile(selectedFile)
+    }
+
+    ImportDialog { id: importWizard }
+    ReportDialog { id: reportDialog }
+
+    FileDialog {
+        id: exportDialog
+        property string format: "csv"
+        title: "Save the table as a file"
+        fileMode: FileDialog.SaveFile
+        currentFolder: Bridge.documentsFolder()
+        onAccepted: {
+            const r = Bridge.exportTable(selectedFile, format)
+            if (!r.ok) toast.show(r.error)
+        }
+    }
+
+    FileDialog {
+        id: pdfDialog
+        title: "Save the report as a PDF"
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "pdf"
+        nameFilters: ["PDF files (*.pdf)"]
+        currentFolder: Bridge.documentsFolder()
+        onAccepted: {
+            const r = Report.savePdf(selectedFile)
+            if (!r.ok) toast.show(r.error)
+        }
     }
 
     Dialog {
         id: replaceDialog
         property string table: ""
         property string spreadsheet: ""
+        property bool fromWizard: false
         title: "Replace the table “" + table + "”?"
         modal: true
         anchors.centerIn: parent
@@ -169,6 +207,11 @@ ApplicationWindow {
             }
         }
         onAccepted: {
+            if (fromWizard) {
+                fromWizard = false
+                importWizard.go(true)
+                return
+            }
             const r = Bridge.importSpreadsheet(spreadsheet, true)
             if (!r.ok)
                 toast.show(r.error)

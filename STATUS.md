@@ -1,156 +1,181 @@
 # Omarchy-DB — status
 
-**Phase A2 (QML desktop app). Last updated 2026-09-21.**
+**Phase B (forms, Excel, reports, printing). Last updated 2026-09-21.**
 
-Phase A2 is complete: the window is now a Qt Quick / QML desktop application
-over the unchanged Python core, CLI and MCP server. The one open item carried
-from Phase A remains: a live PostgreSQL and MySQL connect has still not been
-run on this machine (see [Not yet verified](#not-yet-verified)). Nothing from
-Phase B has **not** been started (waiting on Tim).
+Phase B is complete on this machine, in the order Tim asked for: B0 (live
+theme follow) first, then the form view and grid editing, then Excel import
+and export, fitted PDF reports with preview and system print, the import
+wizard, and a worker thread for imports. The one open item carried from Phase
+A remains: no live PostgreSQL or MySQL server has been connected to from
+here (see [Not yet verified](#not-yet-verified)). Phase C (packaging) is
+mostly not started.
 
-## What changed in A2
+## What changed in Phase B
 
-- **The app is QML.** `src/omarchy_db_app/` holds a PySide6 host (`main.py`,
-  about 60 lines), a bridge (`bridge.py`), the theme loader (`theme.py`) and the
-  QML files under `qml/`. It is a normal `ApplicationWindow`, not a Quickshell
-  panel, plugin or bar chip. Command: `omarchy-db-app`.
-- **The GTK window is archived** under `archive/gtk-prototype/`. It is not
-  installed, not tested and no longer in `pyproject.toml`.
-- **Python core untouched.** No `--json` CLI bridge was needed: the PySide6
-  host imports the library in-process and the bridge calls the same functions
-  the CLI and MCP server use. The bridge returns plain dicts (`ok`, `error`,
-  ...) to the QML. Nothing about databases is written in QML.
-- **Desktop entry** `packaging/omarchy-db.desktop` now launches
-  `omarchy-db-app`; the app sets its Wayland app id to `omarchy-db` to match.
-  `scripts/install-launcher.sh` links the commands into `~/.local/bin` and
-  installs the entry plus `packaging/omarchy-db.svg` under `~/.local/share`.
-  (This is the Phase C install script, pulled forward because "the .desktop
-  file launches the app" cannot be checked without it.)
-- **Omarchy theming.** The app reads the active theme's `colors.toml` from
-  `~/.local/state/omarchy/current/theme/`, builds a Qt palette from it (dark or
-  light by the theme's `mode`), and watches the file so `omarchy theme set`
-  re-colours the open window. Controls use the Fusion style because it paints
-  from the palette. The UI font is the system sans (Qt default); the Omarchy
-  mono font is used only for the row-number column.
+### B0 — the window follows `omarchy theme set` (verified live)
 
-## What works today
+`omarchy theme set` does `rm -rf current/theme` and then `mv theme.next
+current/theme`, so a watch on `colors.toml` went stale the moment the theme
+changed. The app now watches `~/.local/state/omarchy/current/` itself and
+`theme.name` (which are rewritten in place), re-arms the inner watches after
+every change, waits for the burst of events to settle, reads `colors.toml`
+once the new directory is there, rebuilds the palette and emits
+`Theme.changed`. The QML binds to `Theme.*` (`Theme.window`, `Theme.base`,
+`Theme.alternateBase`, `Theme.accent`, …), never to `palette.*`.
 
-### The app (`omarchy-db-app`)
+Verified with the window open: switched from the guild theme to Gruvbox and
+back; the window recoloured each time (screenshots taken at each step). A
+unit test performs the same rm-rf-then-rename twice.
 
-- **Home**: New database, Open a database, Import a spreadsheet, and the
-  recent list. Drop a CSV or `.omadb` anywhere on the window.
-- **New database** chooser: SQLite (default) / PostgreSQL / MySQL-MariaDB with
-  a one-line blurb each; a backend whose driver is missing is greyed out and
-  says what to install. SQLite goes on to a save dialog. The server backends
-  show host, port, database, user, password fields and connect in place, with
-  the error shown inside the dialog.
-- **Open**: a file dialog for SQLite; a recent server entry re-opens the same
-  dialog pre-filled (host, port, database, user) and asks for the password,
-  which is never saved.
-- **Import spreadsheet**: into the open database, or, with none open, a CSV
-  becomes a brand new `.omadb` (title from the file name). Asks before
-  replacing a table of the same name.
-- **Database page**: tables with row counts down the left, a read-only grid
-  of the selected table (first 500 rows) with a header row and yes/no shown as
-  words; empty states that say what to do next.
-- Opens a database given on the command line (`omarchy-db-app file.omadb`),
-  which is what `%f` in the desktop entry passes.
+### B1 — form view and grid editing
 
-### Core library, CLI and MCP server
+- **Form**: one record at a time. Previous / Next, "Row 2 of 4", New row,
+  Save (or "Add this row"), Undo changes, Delete this row. Yes/no fields are a
+  checkbox; other fields are a box to type in with a hint of what fits.
+- **Grid**: tap a row to pick it, double-tap a cell (or Enter / F2) to type in
+  it. Add row and Delete row buttons above the grid. Delete asks first.
+- Values that do not fit come back in words: "age needs a whole number.
+  “three” does not fit."
+- The form honours a form kept in the database (`create_form` in MCP): field
+  order and labels.
 
-Unchanged from Phase A: storage interface with SQLite, PostgreSQL (psycopg)
-and MySQL/MariaDB (PyMySQL) backends; CSV import with type guessing; CSV
-export; recent list; path safety; `omarchy-db` CLI; `omarchy-db-mcp` with
-`list_backends`, `create_database`, `list_databases`, `open_database`,
-`plan_import`, `import_spreadsheet`, `list_tables`, `describe_table`,
-`list_rows`, `add_row`, `export_table`.
+### B2 — Excel, reports, printing, import wizard, worker thread
+
+- **Excel (.xlsx) import and export** with `openpyxl` (optional extra
+  `xlsx`). Import reads one sheet per call (the wizard and MCP let you pick),
+  uses the values Excel last saved for formulas, and never runs anything.
+  Export writes real Excel types (numbers, dates, booleans), bold headings,
+  frozen header row. Old `.xls` is refused with advice.
+- **Reports**: `omarchy_db/reports.py` holds the spec (table, columns, title,
+  page size Letter/A4/Legal, orientation, margins, fit-to-width, text size,
+  row numbers), the row fetch and the column-fitting arithmetic; forms and
+  reports are kept inside the database in Omarchy-DB's own info table.
+  `omarchy_db/printing.py` lays out and paints pages with Qt: one
+  `ReportDocument` writes the PDF, prints to a `QPrinter`, and renders the
+  preview image, so what you preview is what you print. Fit-to-width shrinks
+  columns proportionally (never below their longest word) and wraps cells;
+  rows never clip; pages number "Page n of N".
+- **In the app**: "Print report" opens the designer: title, column
+  checkboxes, page, orientation, fit, margins, text size, keep-by-name, list
+  of kept reports; a live preview that relays out 250 ms after each change,
+  with page arrows; "Print…" opens the system print dialog (`QPrintDialog`),
+  "Save PDF…" a save dialog. "Export…" writes the current table as CSV or
+  Excel.
+- **Import wizard**: every import now goes through one screen showing the
+  file, the sheet (when there is more than one), the table name, and each
+  column's label, guessed type (editable) and a few sample values. Replacing
+  a table still asks first.
+- **Worker thread**: for a file database the import runs on a `QThread` with
+  its own SQLite connection; the wizard shows a spinner and cannot be closed
+  until it is done. Server databases import in place (their connection is
+  not re-openable without the password).
+- **MCP**: new tools `update_row`, `delete_row`, `create_form`, `get_form`,
+  `create_report`, `list_reports`, `delete_report`, `export_report`;
+  `import_spreadsheet` and `plan_import` take `sheet`; `export_table` takes
+  `format` csv | xlsx | pdf. 19 tools in all.
+- **CLI**: `omarchy-db report <db> <table> <out.pdf> [--title --columns --page
+  --landscape --no-fit]`; `export --format csv|xlsx|pdf`; `import --sheet`.
+- **Host**: `QApplication` instead of `QGuiApplication`, only because the
+  system print dialog is a widget. The UI is still all QML.
 
 ## Verified
 
-- `python -m pytest` — **101 passed** (88 from Phase A plus 13 new in
-  `tests/test_app.py`: bridge flows, replace-asks-first, file URLs, path
-  refusal, recent list and server re-connect prompt, rows model, theme
-  palette, and loading `Main.qml` offscreen and finding a 4×6 grid after an
-  import). MCP tests pass unchanged.
-- Launched under Hyprland/Wayland from the terminal with a database argument:
-  `hyprctl clients` shows class `omarchy-db`, title `Pets — Omarchy-DB`;
-  screenshot shows the table list and rows in the Gruvbox palette.
-- Ran `scripts/install-launcher.sh`, then `gio launch
-  ~/.local/share/applications/omarchy-db.desktop`: the home screen opened
-  (class `omarchy-db`), screenshot shows the three buttons and the recent list.
-- Rendered the New database dialog offscreen with PostgreSQL selected: all
-  connection fields and the greyed-out/blurb logic show correctly.
-- `omarchy-db-mcp --tools` lists the same eleven tools as before.
+- `python -m pytest` — **123 passed** (101 after A2, plus theme swap, editing,
+  import worker, export, report bridge, xlsx round trip, sheet choice, saved
+  formula values, column fitting, pagination, PDF bytes, printer path,
+  preview orientation, forms and reports kept in the database, and the new
+  MCP tools end to end).
+- Live theme follow under Hyprland: theme switched twice with the window
+  open; the window recoloured both times.
+- Launched live after every milestone; last launch under the Lumon theme
+  shows Grid / Form, Add row / Delete row, Export…, Print report.
+- Offscreen renders inspected: grid row selection, in-place cell editor, the
+  form ("Row 2 of 4"), the report designer with its preview, the import
+  wizard on a two-sheet workbook (imported the People sheet with the right
+  types), a landscape one-page PDF and a seven-page wrapping report whose
+  PDF pages (via `pdftoppm`) match the preview image.
+- MCP: `omarchy-db-mcp --tools` lists 19 tools; the MCP test drives
+  update/delete row, create/get form, create/list/export/delete report
+  through the real handlers.
+- CLI: `omarchy-db report … --landscape` wrote a one-page PDF.
 
 ## Not yet verified
 
-**Live PostgreSQL and MySQL/MariaDB connect.** Same as Phase A: drivers
-installed, code paths unit-tested offline, but no server has been connected to
-from this machine (no local server binaries; Docker socket needs root). The
-app's server dialog has been exercised only as far as the bridge returning an
-error in words. To finish the check, start two throwaway servers and run
-`scripts/smoke_remote.py` as described in its docstring, then try the same
-details in the app's New database dialog.
+- **Live PostgreSQL and MySQL/MariaDB connect.** Unchanged: drivers
+  installed, code paths unit-tested offline, no server reachable from this
+  machine (no local server binaries; Docker socket needs root). Optional per
+  Tim; `scripts/smoke_remote.py` is ready.
+- **Pressing Print in the system dialog.** The dialog cannot be driven from
+  here. The path it feeds (`ReportDocument.print_to(QPrinter)`) is tested by
+  printing to a PDF-format `QPrinter`, and the dialog constructs.
+- **Forms and reports on server backends.** They are kept in Omarchy-DB's
+  own info table through the shared storage interface, so they should work
+  on all three engines, but have only run on SQLite.
 
-## Phase A2 success criteria
+## Phase B success criteria (from the brief)
 
 | Criterion | State |
 |---|---|
-| QML desktop app opens a normal window on Omarchy (Hyprland/Wayland) | done |
-| New SQLite DB, Open recent, Import CSV, list tables, show rows — via the Python helper | done |
-| Backend chooser on New (SQLite default; Postgres/MySQL connection fields) | done; server connect **not run against a live server** |
-| `.desktop` file launches the QML app | done (via `scripts/install-launcher.sh` + `gio launch`) |
-| GTK GUI archived; README rewritten | done |
-| MCP still works unchanged | done |
-| `STATUS.md` updated | done |
-| No rewrite of the Python core | done — zero changes under `src/omarchy_db/` except one docstring |
+| B0: window tracks `omarchy theme set` while open | done, verified live |
+| Form view: one record, next/prev, save | done |
+| Grid add/edit/delete | done |
+| xlsx import and export | done |
+| Report preview + PDF + system print with fit-to-width | done (print dialog opens; printing to a PDF printer tested) |
+| Import wizard: editable mapping and type guesses | done (types and table name editable; column renaming is not) |
+| Polish empty states | done in A2; wizard and form add their own hints |
+| Worker thread for imports | done for SQLite; in place for servers |
+| MCP `update_row` / `delete_row` / `create_form` / `create_report` / `export_report` | done |
+| STATUS.md updated | done |
 
 ## Engine-specific limits
 
 - **SQLite** keeps dates as ISO text and yes/no as 0/1. The library turns them
   back into real dates and yes/no on the way out, so all three engines look the
   same to the app. PostgreSQL and MySQL use their own `DATE` and boolean types.
-- **Row identity.** Every table Omarchy-DB makes gets an automatic `id`
-  (SQLite `INTEGER PRIMARY KEY AUTOINCREMENT`, PostgreSQL `BIGSERIAL`, MySQL
-  `BIGINT AUTO_INCREMENT`). A table made outside Omarchy-DB without an `id`
-  column can be listed and read, but not updated or deleted row by row.
+- **Row identity.** Every table Omarchy-DB makes gets an automatic `id`. A
+  table made outside Omarchy-DB without an `id` column can be listed and
+  read, but not updated or deleted row by row, so the form and grid editing
+  will refuse it.
 - **Where a database lives.** SQLite is a file the user picks. For PostgreSQL
-  and MySQL, the *server* and the *database* must already exist — Omarchy-DB
-  adds its tables to the one it is pointed at, and `overwrite` drops the tables
-  it can see there. The app never passes `overwrite` for a server.
-- **CSV import on server backends** shares the SQLite path but has only been
-  exercised against SQLite.
+  and MySQL, the *server* and the *database* must already exist. The app never
+  passes `overwrite` for a server.
+- **Imports on server backends** run on the GUI thread (see worker thread
+  above) and have only been exercised against SQLite.
 - **Re-opening a recent server database** needs the password typed again
-  (by design). A PostgreSQL entry remembered as a URL is re-opened through the
-  URL with its password stripped, so it needs the password too.
+  (by design).
+- **Report size.** A report reads at most 20,000 rows; column widths are
+  measured on the first 2,000. The grid shows the first 500 rows of a table.
 
 ## Decisions worth knowing
 
-- **PySide6 host, not C++.** Tim said QML and "smallest host". PySide6 6.11 is
-  already on Omarchy (`pyside6`), it runs QML in a normal window on Wayland,
-  and it lets the bridge call the Python library directly, so no JSON CLI
-  bridge and no second process. The host is ~60 lines; the bridge ~300.
-- **Fusion style + palette.** The Basic style ignores the palette; Material
-  and Universal bring their own look. Fusion paints from the palette, so one
-  palette built from `colors.toml` themes every control.
-- **Work runs on the GUI thread.** Import and open are synchronous. For the
-  sample sizes in v1 that is instant; a big CSV will freeze the window while it
-  loads. Moving that to a worker is a Phase B polish item.
-- **Python, not Rust; MCP with no SDK; yes/no beats numbers for 0/1 columns;
-  names refused not escaped** — unchanged from Phase A.
+- **Pixel-size fonts in reports.** The painter is scaled so one unit is one
+  point on every target (PDF at 300 dpi, printer, preview image). Point-size
+  fonts already follow the device DPI and came out double-scaled; pixel-size
+  fonts do not, so measuring and painting agree everywhere.
+- **Reports live in the core, Qt is imported lazily.** The core still installs
+  with no third-party packages; `printing.py` imports PySide6 only when a PDF
+  is made, and starts an offscreen `QGuiApplication` if none exists (that is
+  how the MCP server and CLI make PDFs).
+- **Forms and reports are stored in the database file**, under `form:<table>`
+  and `report:<name>` keys in `omadb_info`, so they travel with the `.omadb`.
+- **The wizard is the only import path in the window.** Dropping a file,
+  the Import button and the first-run path all open it, so the type guesses
+  are always shown before anything is written.
+- **PySide6 host; Fusion style + palette; work on the GUI thread except
+  imports; Python not Rust; MCP with no SDK; names refused not escaped** —
+  unchanged from earlier phases.
 
-## Next — Phase B (not started, waiting on Tim)
+## Next — Phase C (mostly not started, waiting on Tim)
 
-- Form view: one record at a time, next/previous, save. Add / edit / delete
-  rows from the grid.
-- xlsx import and export (`openpyxl`).
-- Reports: choose fields, preview, fit-to-width, system print (Qt print) and PDF.
-- Import wizard in the window: editable column mapping and type guesses.
-- Export CSV from the window (the library and MCP already do it).
-- Run import/open off the GUI thread; drag-and-drop feedback while hovering.
-- Live smoke test of PostgreSQL and MySQL, then confirm the app dialog against them.
+- `scripts/install-launcher.sh` exists (done early in A2). Still to do: an
+  optional PKGBUILD draft for `omarchy-pkgs`. Nothing to be published without
+  Tim.
 
-## Phase C (mostly not started)
+## Loose ends worth a later pass
 
-`scripts/install-launcher.sh` exists (pulled forward). Still to do: an optional
-PKGBUILD draft for `omarchy-pkgs`. Nothing to be published without Tim.
+- Column renaming in the import wizard (labels are shown, not editable).
+- Filter and sort in the grid (the brief's "filter/sort simple" for table view).
+- Reports: choose sort order; group headings; a header/footer of your own.
+- Open a database on the worker thread too (only imports are off-thread today).
+- A drag-over highlight while a file is being dropped on the window.
+- Live PostgreSQL / MySQL smoke, then confirm forms, reports and imports there.
