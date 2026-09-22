@@ -2,12 +2,12 @@
 Type=Application
 Name=Omarchy-DB
 GenericName=Database
-Comment=Make a simple database, type in your data, print a tidy list
-Exec=omarchy-db-gui %f
-Icon=org.ninepointlabs.OmarchyDB
+Comment=Make a simple database, put a spreadsheet in it, look at your rows
+Exec=omarchy-db-app %f
+Icon=omarchy-db
 Terminal=false
-Categories=Office;Database;GTK;
+Categories=Office;Database;Qt;
 MimeType=application/x-omarchy-db;
 Keywords=database;table;spreadsheet;csv;access;
 StartupNotify=true
-StartupWMClass=org.ninepointlabs.OmarchyDB
+StartupWMClass=omarchy-db

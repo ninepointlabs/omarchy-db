@@ -1,108 +1,109 @@
 # Omarchy-DB — status
 
-**Phase A (skeleton). Last updated 2026-09-21.**
+**Phase A2 (QML desktop app). Last updated 2026-09-21.**
 
-Phase A is complete except for one check that needs a running PostgreSQL and
-MySQL server — see [Not yet verified](#not-yet-verified). Nothing from Phase B
-or C was started.
+Phase A2 is complete: the window is now a Qt Quick / QML desktop application
+over the unchanged Python core, CLI and MCP server. The one open item carried
+from Phase A remains: a live PostgreSQL and MySQL connect has still not been
+run on this machine (see [Not yet verified](#not-yet-verified)). Nothing from
+Phase B was started.
+
+## What changed in A2
+
+- **The app is QML.** `src/omarchy_db_app/` holds a PySide6 host (`main.py`,
+  about 60 lines), a bridge (`bridge.py`), the theme loader (`theme.py`) and the
+  QML files under `qml/`. It is a normal `ApplicationWindow`, not a Quickshell
+  panel, plugin or bar chip. Command: `omarchy-db-app`.
+- **The GTK window is archived** under `archive/gtk-prototype/`. It is not
+  installed, not tested and no longer in `pyproject.toml`.
+- **Python core untouched.** No `--json` CLI bridge was needed: the PySide6
+  host imports the library in-process and the bridge calls the same functions
+  the CLI and MCP server use. The bridge returns plain dicts (`ok`, `error`,
+  ...) to the QML. Nothing about databases is written in QML.
+- **Desktop entry** `packaging/omarchy-db.desktop` now launches
+  `omarchy-db-app`; the app sets its Wayland app id to `omarchy-db` to match.
+  `scripts/install-launcher.sh` links the commands into `~/.local/bin` and
+  installs the entry plus `packaging/omarchy-db.svg` under `~/.local/share`.
+  (This is the Phase C install script, pulled forward because "the .desktop
+  file launches the app" cannot be checked without it.)
+- **Omarchy theming.** The app reads the active theme's `colors.toml` from
+  `~/.local/state/omarchy/current/theme/`, builds a Qt palette from it (dark or
+  light by the theme's `mode`), and watches the file so `omarchy theme set`
+  re-colours the open window. Controls use the Fusion style because it paints
+  from the palette. The UI font is the system sans (Qt default); the Omarchy
+  mono font is used only for the row-number column.
 
 ## What works today
 
-### Core library (`src/omarchy_db/`)
+### The app (`omarchy-db-app`)
 
-- **Storage interface** (`storage/base.py`) that the window, the command line
-  and the MCP server all share. One API, three engines.
-- **SQLite backend** — complete. Makes a `.omadb` file (mode 0600), creates
-  tables, adds/reads/updates/deletes rows, paging and sorting.
-- **PostgreSQL backend** (`psycopg`) and **MySQL/MariaDB backend** (`PyMySQL`) —
-  real drivers, no stubs and no fakes. Create/open, create table, list tables,
-  describe, and full row CRUD are implemented through the same interface.
-- **CSV import** with type guessing across the five field types
-  (words / whole number / number with decimals / date / yes-no). Blank cells
-  never decide a type; a cell that does not fit is kept as words and reported
-  rather than dropped.
-- **CSV export**, including yes/no written as words.
-- **Recent databases list** at `~/.local/state/omarchy-db/databases.json`
-  (mode 0600). It records how to find a server, never how to log into one.
-- **Path safety** — every path is resolved and must land under an approved root
-  (`$HOME` by default, or `OMARCHY_DB_ROOTS`). `../` traversal and symlinks
-  pointing outside are refused.
+- **Home**: New database, Open a database, Import a spreadsheet, and the
+  recent list. Drop a CSV or `.omadb` anywhere on the window.
+- **New database** chooser: SQLite (default) / PostgreSQL / MySQL-MariaDB with
+  a one-line blurb each; a backend whose driver is missing is greyed out and
+  says what to install. SQLite goes on to a save dialog. The server backends
+  show host, port, database, user, password fields and connect in place, with
+  the error shown inside the dialog.
+- **Open**: a file dialog for SQLite; a recent server entry re-opens the same
+  dialog pre-filled (host, port, database, user) and asks for the password,
+  which is never saved.
+- **Import spreadsheet**: into the open database, or, with none open, a CSV
+  becomes a brand new `.omadb` (title from the file name). Asks before
+  replacing a table of the same name.
+- **Database page**: tables with row counts down the left, a read-only grid
+  of the selected table (first 500 rows) with a header row and yes/no shown as
+  words; empty states that say what to do next.
+- Opens a database given on the command line (`omarchy-db-app file.omadb`),
+  which is what `%f` in the desktop entry passes.
 
-### Command line (`omarchy-db`)
+### Core library, CLI and MCP server
 
-`backends`, `new`, `import`, `plan`, `tables`, `rows`, `export`, `recent`.
-Verified by hand end to end on `data/examples/pets.csv`.
-
-### MCP server (`omarchy-db-mcp`)
-
-Stdio JSON-RPC, protocol `2024-11-05`. Tools: `list_backends`,
-`create_database`, `list_databases`, `open_database`, `plan_import`,
-`import_spreadsheet`, `list_tables`, `describe_table`, `list_rows`, `add_row`,
-`export_table`. `--tools` prints the schemas.
-
-### Window (`omarchy-db-gui`)
-
-GTK4 + Libadwaita. Opens a database (or the most recent one on start), lists its
-tables, shows the rows, makes a new SQLite database through a backend chooser,
-and imports a spreadsheet — asking first if that would replace a table.
-Launched on this machine under Hyprland/Wayland and confirmed showing tables and
-rows; follows the system light/dark preference.
-
-`packaging/omarchy-db.desktop` exists but is **not installed** anywhere
-(installing it is Phase C).
+Unchanged from Phase A: storage interface with SQLite, PostgreSQL (psycopg)
+and MySQL/MariaDB (PyMySQL) backends; CSV import with type guessing; CSV
+export; recent list; path safety; `omarchy-db` CLI; `omarchy-db-mcp` with
+`list_backends`, `create_database`, `list_databases`, `open_database`,
+`plan_import`, `import_spreadsheet`, `list_tables`, `describe_table`,
+`list_rows`, `add_row`, `export_table`.
 
 ## Verified
 
-- `python -m pytest` — **88 passed**, covering type guessing, path safety and
-  traversal, the SQLite backend, import/export, the backend chooser and SQL
-  shapes for all three engines, and the MCP server (including starting it as a
-  real process and speaking JSON-RPC to it over a pipe).
-- CLI end to end: made a database, imported `pets.csv` (5 fields correctly
-  typed, 4 rows), listed tables and rows, exported CSV, and confirmed a write
-  to `/etc/` is refused.
-- GTK window launched and screenshotted showing the imported table.
+- `python -m pytest` — **101 passed** (88 from Phase A plus 13 new in
+  `tests/test_app.py`: bridge flows, replace-asks-first, file URLs, path
+  refusal, recent list and server re-connect prompt, rows model, theme
+  palette, and loading `Main.qml` offscreen and finding a 4×6 grid after an
+  import). MCP tests pass unchanged.
+- Launched under Hyprland/Wayland from the terminal with a database argument:
+  `hyprctl clients` shows class `omarchy-db`, title `Pets — Omarchy-DB`;
+  screenshot shows the table list and rows in the Gruvbox palette.
+- Ran `scripts/install-launcher.sh`, then `gio launch
+  ~/.local/share/applications/omarchy-db.desktop`: the home screen opened
+  (class `omarchy-db`), screenshot shows the three buttons and the recent list.
+- Rendered the New database dialog offscreen with PostgreSQL selected: all
+  connection fields and the greyed-out/blurb logic show correctly.
+- `omarchy-db-mcp --tools` lists the same eleven tools as before.
 
 ## Not yet verified
 
-**Live PostgreSQL and MySQL/MariaDB connect.** The drivers are installed and
-the code paths are unit-tested offline (column type maps, identifier quoting,
-parameter markers, password redaction, connection-string building), but no
-server has actually been connected to on this machine. Docker is installed but
-its socket needs root, and this session's process carries stale group
-membership, so the containers could not be started from here.
+**Live PostgreSQL and MySQL/MariaDB connect.** Same as Phase A: drivers
+installed, code paths unit-tested offline, but no server has been connected to
+from this machine (no local server binaries; Docker socket needs root). The
+app's server dialog has been exercised only as far as the bridge returning an
+error in words. To finish the check, start two throwaway servers and run
+`scripts/smoke_remote.py` as described in its docstring, then try the same
+details in the app's New database dialog.
 
-To finish the check, start two throwaway servers and run the smoke script:
-
-```sh
-docker run -d --rm --name omadb-pg -e POSTGRES_PASSWORD=smoke \
-    -e POSTGRES_DB=omadb_smoke -p 5432:5432 postgres:16
-docker run -d --rm --name omadb-my -e MARIADB_ROOT_PASSWORD=smoke \
-    -e MARIADB_DATABASE=omadb_smoke -p 3306:3306 mariadb:11
-
-OMARCHY_DB_PASSWORD=smoke .venv/bin/python scripts/smoke_remote.py postgres \
-    --host 127.0.0.1 --database omadb_smoke --user postgres
-OMARCHY_DB_PASSWORD=smoke .venv/bin/python scripts/smoke_remote.py mysql \
-    --host 127.0.0.1 --database omadb_smoke --user root
-
-docker stop omadb-pg omadb-my
-```
-
-The script connects, creates an empty table, lists tables, describes it, adds
-and reads back a row, updates and deletes it, drops the table and reopens.
-
-## Phase A success criteria
+## Phase A2 success criteria
 
 | Criterion | State |
 |---|---|
-| `~/Projects/omarchy-db` with README + tests | done |
-| Import a sample CSV into a new `.omadb` and list rows via library/MCP | done |
-| Creation offers SQLite (default), PostgreSQL, MySQL/MariaDB | done |
-| SQLite full path works | done |
-| Postgres/MySQL connect + empty table + list tables in a smoke test | **code + script ready, not run against a live server** |
-| MCP server starts and tools work in a smoke test | done |
-| GTK window opens and shows tables/rows | done |
-| `STATUS.md` lists done / next | done |
-| No secrets committed; path traversal tests pass | done |
+| QML desktop app opens a normal window on Omarchy (Hyprland/Wayland) | done |
+| New SQLite DB, Open recent, Import CSV, list tables, show rows — via the Python helper | done |
+| Backend chooser on New (SQLite default; Postgres/MySQL connection fields) | done; server connect **not run against a live server** |
+| `.desktop` file launches the QML app | done (via `scripts/install-launcher.sh` + `gio launch`) |
+| GTK GUI archived; README rewritten | done |
+| MCP still works unchanged | done |
+| `STATUS.md` updated | done |
+| No rewrite of the Python core | done — zero changes under `src/omarchy_db/` except one docstring |
 
 ## Engine-specific limits
 
@@ -116,39 +117,40 @@ and reads back a row, updates and deletes it, drops the table and reopens.
 - **Where a database lives.** SQLite is a file the user picks. For PostgreSQL
   and MySQL, the *server* and the *database* must already exist — Omarchy-DB
   adds its tables to the one it is pointed at, and `overwrite` drops the tables
-  it can see there.
-- **CSV import on server backends** is written and shares the SQLite path, but
-  has only been exercised against SQLite. Confirm it with the smoke script
-  above before relying on it.
-- **New database in the window** currently only makes SQLite databases. The
-  chooser shows all three and explains the other two; a server database is made
-  from the command line or an agent for now.
+  it can see there. The app never passes `overwrite` for a server.
+- **CSV import on server backends** shares the SQLite path but has only been
+  exercised against SQLite.
+- **Re-opening a recent server database** needs the password typed again
+  (by design). A PostgreSQL entry remembered as a URL is re-opened through the
+  URL with its password stripped, so it needs the password too.
 
 ## Decisions worth knowing
 
-- **Python, not Rust.** Faster to a readable v1, and PyGObject is already on
-  Omarchy (`python-gobject`).
-- **The MCP server has no SDK dependency.** MCP over stdio is plain JSON-RPC,
-  so it is written against the stdlib. The core library and the MCP server
-  install with zero third-party packages; only the window (PyGObject) and the
-  two server backends need anything.
-- **Type guessing prefers yes/no over numbers for a 0/1 column.** A column of
-  nothing but 0 and 1 is a yes/no far more often than a count. It is shown in
-  the plan before import and can be changed.
-- **Names are refused, not escaped.** Table and field names must be plain
-  identifiers. Spreadsheet headings are slugified into safe names and the
-  original heading is kept as the label people see.
+- **PySide6 host, not C++.** Tim said QML and "smallest host". PySide6 6.11 is
+  already on Omarchy (`pyside6`), it runs QML in a normal window on Wayland,
+  and it lets the bridge call the Python library directly, so no JSON CLI
+  bridge and no second process. The host is ~60 lines; the bridge ~300.
+- **Fusion style + palette.** The Basic style ignores the palette; Material
+  and Universal bring their own look. Fusion paints from the palette, so one
+  palette built from `colors.toml` themes every control.
+- **Work runs on the GUI thread.** Import and open are synchronous. For the
+  sample sizes in v1 that is instant; a big CSV will freeze the window while it
+  loads. Moving that to a worker is a Phase B polish item.
+- **Python, not Rust; MCP with no SDK; yes/no beats numbers for 0/1 columns;
+  names refused not escaped** — unchanged from Phase A.
 
 ## Next — Phase B (not started, waiting on Tim)
 
-- Form view: one record at a time, next/previous, save.
+- Form view: one record at a time, next/previous, save. Add / edit / delete
+  rows from the grid.
 - xlsx import and export (`openpyxl`).
-- Reports: choose fields, preview, fit-to-width, system print and PDF.
+- Reports: choose fields, preview, fit-to-width, system print (Qt print) and PDF.
 - Import wizard in the window: editable column mapping and type guesses.
-- Make a server database from the window, not just the command line.
-- Empty-state polish ("Drop a spreadsheet here").
+- Export CSV from the window (the library and MCP already do it).
+- Run import/open off the GUI thread; drag-and-drop feedback while hovering.
+- Live smoke test of PostgreSQL and MySQL, then confirm the app dialog against them.
 
-## Phase C (not started)
+## Phase C (mostly not started)
 
-Desktop entry install script and an optional PKGBUILD draft for `omarchy-pkgs`.
-Nothing to be published without Tim.
+`scripts/install-launcher.sh` exists (pulled forward). Still to do: an optional
+PKGBUILD draft for `omarchy-pkgs`. Nothing to be published without Tim.

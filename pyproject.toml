@@ -10,9 +10,9 @@ readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.11"
 authors = [{ name = "Nine Point Labs" }]
-keywords = ["omarchy", "database", "gtk", "sqlite", "mcp"]
+keywords = ["omarchy", "database", "qml", "qt", "sqlite", "mcp"]
 classifiers = [
-  "Environment :: X11 Applications :: GTK",
+  "Environment :: X11 Applications :: Qt",
   "License :: OSI Approved :: MIT License",
   "Operating System :: POSIX :: Linux",
   "Programming Language :: Python :: 3",
@@ -23,9 +23,9 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
-# The window. PyGObject is best installed from Arch (`python-gobject`);
-# it is listed here so the requirement is written down somewhere.
-gui = ["PyGObject>=3.46"]
+# The window. PySide6 is best installed from Arch (`pyside6`, which pulls in
+# qt6-declarative); it is listed here so the requirement is written down.
+app = ["PySide6>=6.6"]
 postgres = ["psycopg[binary]>=3.1"]
 mysql = ["PyMySQL>=1.1"]
 dev = ["pytest>=8.0"]
@@ -35,13 +35,13 @@ omarchy-db = "omarchy_db.cli:main"
 omarchy-db-mcp = "omarchy_db_mcp.server:main"
 
 [project.gui-scripts]
-omarchy-db-gui = "omarchy_db_gui.app:main"
+omarchy-db-app = "omarchy_db_app.main:main"
 
 [project.urls]
 Homepage = "https://github.com/ninepointlabs/omarchy-db"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/omarchy_db", "src/omarchy_db_gui", "src/omarchy_db_mcp"]
+packages = ["src/omarchy_db", "src/omarchy_db_app", "src/omarchy_db_mcp"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

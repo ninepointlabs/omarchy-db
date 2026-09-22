@@ -1,6 +1,6 @@
 """Omarchy-DB — a simple desktop database for Omarchy Linux.
 
-The core library. The GTK app (`omarchy_db_gui`) and the MCP server
+The core library. The QML desktop app (`omarchy_db_app`) and the MCP server
 (`omarchy_db_mcp`) are both thin layers over what is here.
 """
 
