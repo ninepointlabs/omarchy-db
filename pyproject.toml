@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "omarchy-db"
+version = "0.1.0"
+description = "A simple desktop database for Omarchy Linux, in the spirit of Microsoft Access."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+authors = [{ name = "Nine Point Labs" }]
+keywords = ["omarchy", "database", "gtk", "sqlite", "mcp"]
+classifiers = [
+  "Environment :: X11 Applications :: GTK",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Topic :: Database :: Front-Ends",
+]
+
+# The core library and the MCP server need nothing but Python's own modules.
+dependencies = []
+
+[project.optional-dependencies]
+# The window. PyGObject is best installed from Arch (`python-gobject`);
+# it is listed here so the requirement is written down somewhere.
+gui = ["PyGObject>=3.46"]
+postgres = ["psycopg[binary]>=3.1"]
+mysql = ["PyMySQL>=1.1"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+omarchy-db = "omarchy_db.cli:main"
+omarchy-db-mcp = "omarchy_db_mcp.server:main"
+
+[project.gui-scripts]
+omarchy-db-gui = "omarchy_db_gui.app:main"
+
+[project.urls]
+Homepage = "https://github.com/ninepointlabs/omarchy-db"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/omarchy_db", "src/omarchy_db_gui", "src/omarchy_db_mcp"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]

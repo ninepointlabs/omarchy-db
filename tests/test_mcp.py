@@ -1,0 +1,173 @@
+"""The MCP server, driven the way an agent drives it: JSON-RPC over a pipe."""
+
+from __future__ import annotations
+
+import io
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+from omarchy_db_mcp import server
+
+
+def call(name: str, **arguments):
+    """Run one tool and hand back the parsed payload."""
+    result = server.call_tool(name, arguments)
+    payload = json.loads(result["content"][0]["text"])
+    return payload, result["isError"]
+
+
+def test_every_tool_is_listed_with_a_schema():
+    names = {tool["name"] for tool in server.TOOL_SCHEMAS}
+    assert {
+        "create_database",
+        "list_databases",
+        "open_database",
+        "import_spreadsheet",
+        "list_tables",
+        "describe_table",
+        "list_rows",
+        "add_row",
+        "export_table",
+    } <= names
+    for tool in server.TOOL_SCHEMAS:
+        assert tool["description"]
+        assert tool["inputSchema"]["type"] == "object"
+
+
+def test_the_whole_job_end_to_end(sandbox: Path, pets_csv: Path):
+    path = str(sandbox / "pets.omadb")
+
+    made, failed = call("create_database", title="Pets", backend="sqlite", path=path)
+    assert not failed and made["made"] is True
+
+    imported, failed = call("import_spreadsheet", path=path, file=str(pets_csv))
+    assert not failed
+    assert imported["table"] == "pets"
+    assert imported["rows_added"] == 4
+
+    tables, failed = call("list_tables", path=path)
+    assert not failed
+    assert tables["tables"] == [{"name": "pets", "fields": 5, "rows": 4}]
+
+    described, failed = call("describe_table", path=path, table="pets")
+    assert [f["type"] for f in described["fields"]] == [
+        "text",
+        "integer",
+        "date",
+        "boolean",
+        "real",
+    ]
+
+    rows, failed = call("list_rows", path=path, table="pets", limit=2)
+    assert not failed
+    assert len(rows["rows"]) == 2
+    assert rows["total"] == 4
+
+    added, failed = call("add_row", path=path, table="pets", values={"name": "Nala", "age": 3})
+    assert not failed and added["id"] == 5
+
+    out = str(sandbox / "pets-out.csv")
+    exported, failed = call("export_table", path=path, table="pets", file=out)
+    assert not failed and exported["rows_written"] == 5
+    assert Path(out).exists()
+
+    listed, failed = call("list_databases")
+    assert not failed and listed["count"] >= 1
+    assert listed["databases"][0]["title"] == "Pets"
+
+
+def test_paths_outside_the_roots_come_back_as_a_clean_error(sandbox: Path):
+    payload, failed = call("create_database", title="Nope", path="/etc/omarchy-db.omadb")
+    assert failed is True
+    assert "outside the folders" in payload["error"]
+
+    path = str(sandbox / "ok.omadb")
+    call("create_database", title="Ok", path=path)
+    payload, failed = call("import_spreadsheet", path=path, file="../../etc/passwd")
+    assert failed is True
+    assert "error" in payload
+
+
+def test_overwrite_is_reported(sandbox: Path, pets_csv: Path):
+    path = str(sandbox / "pets.omadb")
+    call("create_database", title="Pets", path=path)
+    call("import_spreadsheet", path=path, file=str(pets_csv))
+    out = str(sandbox / "out.csv")
+    call("export_table", path=path, table="pets", file=out)
+    payload, failed = call("export_table", path=path, table="pets", file=out)
+    assert failed is True
+    payload, failed = call("export_table", path=path, table="pets", file=out, overwrite=True)
+    assert not failed
+    assert payload["note"] == "A file was already there and has been replaced."
+
+
+def test_an_unknown_tool_is_an_error_not_a_crash():
+    payload, failed = call("delete_everything")
+    assert failed is True
+    assert "no tool called" in payload["error"]
+
+
+def test_backends_are_listed_with_their_driver_state():
+    payload, failed = call("list_backends")
+    assert not failed
+    assert [b["key"] for b in payload["backends"]] == ["sqlite", "postgres", "mysql"]
+    assert payload["default"] == "sqlite"
+    assert payload["backends"][0]["driver_installed"] is True
+
+
+def test_handshake_over_the_wire(sandbox: Path, pets_csv: Path):
+    """Start the server as a real process and talk MCP to it."""
+    requests = [
+        {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+        {"jsonrpc": "2.0", "method": "notifications/initialized"},
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+        {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": {
+                "name": "create_database",
+                "arguments": {"title": "Wire", "path": str(sandbox / "wire.omadb")},
+            },
+        },
+    ]
+    source = "\n".join(json.dumps(request) for request in requests) + "\n"
+    process = subprocess.run(
+        [sys.executable, "-m", "omarchy_db_mcp"],
+        input=source,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        cwd=str(Path(__file__).resolve().parents[1]),
+        env=_env(sandbox),
+    )
+    assert process.returncode == 0, process.stderr
+    replies = [json.loads(line) for line in process.stdout.splitlines() if line.strip()]
+    assert [reply["id"] for reply in replies] == [1, 2, 3]
+    assert replies[0]["result"]["serverInfo"]["name"] == "omarchy-db"
+    assert replies[0]["result"]["protocolVersion"] == server.PROTOCOL_VERSION
+    assert len(replies[1]["result"]["tools"]) == len(server.TOOL_SCHEMAS)
+    assert replies[2]["result"]["isError"] is False
+    assert (sandbox / "wire.omadb").exists()
+
+
+def test_bad_json_does_not_stop_the_server():
+    out = io.StringIO()
+    server.serve(io.StringIO('not json\n{"jsonrpc":"2.0","id":9,"method":"ping"}\n'), out)
+    replies = [json.loads(line) for line in out.getvalue().splitlines()]
+    assert replies[0]["error"]["code"] == -32700
+    assert replies[1]["id"] == 9
+
+
+def _env(sandbox: Path) -> dict:
+    import os
+
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
+    env["OMARCHY_DB_ROOTS"] = str(sandbox)
+    env["XDG_STATE_HOME"] = str(sandbox / "state")
+    return env

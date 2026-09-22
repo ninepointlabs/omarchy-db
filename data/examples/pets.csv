@@ -1,0 +1,5 @@
+name,age,adopted_on,is_good,weight_kg
+Rex,4,2021-03-14,yes,12.5
+Milo,2,2023-07-01,yes,4.25
+Shadow,11,2014-11-30,no,6
+Pip,,2024-01-05,yes,1.1

@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+.venv/
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Never commit real databases or exports
+*.omadb
+*.omadb-wal
+*.omadb-shm
+*.sqlite
+*.sqlite3
+/out/
+/scratch/
+
+# Never commit connection details
+.env
+*.secret

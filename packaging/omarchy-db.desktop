@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Omarchy-DB
+GenericName=Database
+Comment=Make a simple database, type in your data, print a tidy list
+Exec=omarchy-db-gui %f
+Icon=org.ninepointlabs.OmarchyDB
+Terminal=false
+Categories=Office;Database;GTK;
+MimeType=application/x-omarchy-db;
+Keywords=database;table;spreadsheet;csv;access;
+StartupNotify=true
+StartupWMClass=org.ninepointlabs.OmarchyDB
