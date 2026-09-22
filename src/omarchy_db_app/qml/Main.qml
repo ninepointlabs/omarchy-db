@@ -209,6 +209,7 @@ ApplicationWindow {
         onAccepted: {
             if (fromWizard) {
                 fromWizard = false
+                tables = []
                 importWizard.go(true)
                 return
             }

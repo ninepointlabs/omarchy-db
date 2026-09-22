@@ -12,10 +12,15 @@ Dialog {
     property var fieldTypes: Bridge.fieldTypes()
     property var chosen: []            // [{name, label, type}]
     property string error: ""
+    property bool everySheet: false     // off by default: one sheet, one table
+    property var sheetPlan: []          // [{sheet, table, exists}] for the every-sheet path
 
     function openFor(url) {
         spreadsheet = url
         error = ""
+        everySheet = false
+        everyBox.checked = false
+        sheetPlan = []
         replan("")
         open()
     }
@@ -42,15 +47,28 @@ Dialog {
     property bool working: false
 
     function go(replace) {
-        const r = Bridge.importPlanned(spreadsheet, plan.sheet || "", tableField.text, chosen, replace)
+        const r = everySheet
+            ? Bridge.importAllSheets(spreadsheet, replace)
+            : Bridge.importPlanned(spreadsheet, plan.sheet || "", tableField.text, chosen, replace)
         if (r.ok && r.pending) { working = true; return }
         finished(r)
     }
 
     function finished(r) {
         working = false
-        if (r.ok) { close(); return }
-        if (r.needsConfirm) { replaceDialog.table = r.table; replaceDialog.spreadsheet = spreadsheet; replaceDialog.fromWizard = true; replaceDialog.open(); return }
+        if (r.ok) {
+            if (r.errors && r.errors.length > 0) toast.show("Skipped: " + r.errors.join("  "))
+            close()
+            return
+        }
+        if (r.needsConfirm) {
+            replaceDialog.table = r.table
+            replaceDialog.tables = r.tables || [r.table]
+            replaceDialog.spreadsheet = spreadsheet
+            replaceDialog.fromWizard = true
+            replaceDialog.open()
+            return
+        }
         error = r.error
     }
 
@@ -78,8 +96,44 @@ Dialog {
             elide: Text.ElideMiddle
         }
 
+        CheckBox {
+            id: everyBox
+            visible: (plan.sheets || []).length > 1
+            text: "Import every sheet as its own table"
+            checked: dialog.everySheet
+            onToggled: {
+                dialog.everySheet = checked
+                if (checked) dialog.sheetPlan = Bridge.workbookPlan(dialog.spreadsheet)
+            }
+        }
+
+        // ---- every sheet: what each one becomes ------------------------------
+        ColumnLayout {
+            Layout.fillWidth: true
+            visible: dialog.everySheet
+            spacing: 4
+            Label {
+                text: "Each sheet becomes a table named after it, using guessed types."
+                color: Theme.lightForeground
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+            Repeater {
+                model: dialog.sheetPlan
+                delegate: RowLayout {
+                    required property var modelData
+                    Layout.fillWidth: true
+                    spacing: 12
+                    Label { Layout.preferredWidth: 220; text: modelData.sheet; elide: Text.ElideRight; font.pointSize: 12 }
+                    Label { text: "\u2192  " + modelData.table; font.family: Theme.monoFont }
+                    Label { text: modelData.exists ? "(replaces the table there now)" : ""; color: Theme.yellow; font.pointSize: 10 }
+                }
+            }
+        }
+
         GridLayout {
             Layout.fillWidth: true
+            visible: !dialog.everySheet
             columns: 2
             columnSpacing: 12
             rowSpacing: 8
@@ -95,6 +149,7 @@ Dialog {
         }
 
         Label {
+            visible: !dialog.everySheet
             text: "Each column becomes a field. Change a guess if it is wrong."
             font.bold: true
             Layout.topMargin: 4
@@ -103,6 +158,7 @@ Dialog {
         ScrollView {
             Layout.fillWidth: true
             Layout.fillHeight: true
+            visible: !dialog.everySheet
             clip: true
             contentWidth: availableWidth
             ColumnLayout {
@@ -146,7 +202,9 @@ Dialog {
             BusyIndicator { running: dialog.working; implicitWidth: 28; implicitHeight: 28 }
             Label { text: Bridge.busyText || "Importing…"; color: Theme.lightForeground }
         }
+        Item { Layout.fillHeight: true; visible: dialog.everySheet }
         Label {
+            visible: !dialog.everySheet
             text: plan.rows_sampled !== undefined
                 ? (plan.rows_sampled >= 500 ? "Looked at the first 500 rows." : plan.rows_sampled + " rows.")
                 : ""
@@ -165,9 +223,11 @@ Dialog {
     footer: DialogButtonBox {
         ActionButton { text: "Cancel"; enabled: !dialog.working; onClicked: dialog.reject() }
         ActionButton {
-            text: plan.exists && tableField.text === plan.table ? "Import (replaces the table)" : "Import"
+            text: dialog.everySheet
+                ? "Import " + dialog.sheetPlan.length + " sheets"
+                : (plan.exists && tableField.text === plan.table ? "Import (replaces the table)" : "Import")
             primary: true
-            enabled: dialog.error === "" && chosen.length > 0 && !dialog.working
+            enabled: dialog.error === "" && (dialog.everySheet ? dialog.sheetPlan.length > 0 : chosen.length > 0) && !dialog.working
             onClicked: dialog.go(false)
         }
     }

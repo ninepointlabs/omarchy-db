@@ -22,11 +22,11 @@ from PySide6.QtCore import (
     Slot,
 )
 
-from omarchy_db import catalog
+from omarchy_db import catalog, schema
 from omarchy_db.errors import OmarchyDBError
 from omarchy_db.exporter import export_table
 from omarchy_db.fields import FIELD_TYPE_LABELS, FIELD_TYPES, Field
-from omarchy_db.importer import import_spreadsheet, plan_import
+from omarchy_db.importer import import_spreadsheet, import_workbook, plan_import, workbook_plan
 from omarchy_db.paths import default_documents_dir, home
 from omarchy_db.reports import form_for
 from omarchy_db.storage import BACKENDS, SQLITE, Storage, create_database, open_database
@@ -258,6 +258,11 @@ class Bridge(QObject):
     def backendWord(self) -> str:  # noqa: N802
         return BACKEND_WORDS.get(self._storage.backend, "") if self._storage else ""
 
+    @Property(bool, notify=databaseChanged)
+    def isLocalFile(self) -> bool:  # noqa: N802
+        """True for a .omadb on this computer: the only kind the app will delete."""
+        return bool(self._storage) and self._storage.backend == SQLITE
+
     @Property("QVariantList", notify=tablesChanged)
     def tables(self) -> list[dict[str, Any]]:
         return list(self._tables)
@@ -387,6 +392,60 @@ class Bridge(QObject):
             "connection": _parse_where(backend, entry.get("where", "")),
         }
 
+    @Slot(int, result="QVariantMap")
+    def removeRecent(self, index: int) -> dict:  # noqa: N802
+        """Forget a database in the recent list. The database itself is untouched."""
+        entries = catalog.recent()
+        if index < 0 or index >= len(entries):
+            return {"ok": False, "error": "That database is not in the list any more."}
+        entry = entries[index]
+        catalog.forget(backend=entry.get("backend", SQLITE), path=entry.get("path", ""), where=entry.get("where", ""))
+        return {"ok": True}
+
+    @Slot(int, result="QVariantMap")
+    def deleteRecentFile(self, index: int) -> dict:  # noqa: N802
+        """Delete a database file from the recent list, for good."""
+        entries = catalog.recent()
+        if index < 0 or index >= len(entries):
+            return {"ok": False, "error": "That database is not in the list any more."}
+        entry = entries[index]
+        if entry.get("backend", SQLITE) != SQLITE or not entry.get("path"):
+            return {"ok": False, "error": "Only a database file on this computer can be deleted here."}
+        path = entry["path"]
+        if self._storage is not None and self._storage.backend == SQLITE and self._storage.location() == path:
+            return self.deleteDatabase()
+        try:
+            schema.delete_database_file(None, path)
+        except OmarchyDBError as error:
+            return {"ok": False, "error": str(error)}
+        self.message.emit(f"Deleted {Path(path).name}.")
+        return {"ok": True}
+
+    @Slot(result="QVariantMap")
+    def deleteDatabase(self) -> dict:  # noqa: N802
+        """Delete the open database file and go back to Home. Server databases are never dropped."""
+        if self._storage is None:
+            return {"ok": False, "error": "No database is open."}
+        if self._storage.backend != SQLITE:
+            return {"ok": False, "error": "Only a database file on this computer can be deleted here. "
+                    "A server database is left alone."}
+        path = self._storage.location()
+        storage, self._storage = self._storage, None
+        try:
+            schema.delete_database_file(storage, path)
+        except OmarchyDBError as error:
+            self._storage = storage
+            return {"ok": False, "error": str(error)}
+        self._tables = []
+        self._current_table = ""
+        self._shown = self._total = 0
+        self._rows.clear()
+        self.tablesChanged.emit()
+        self.tableChanged.emit()
+        self.databaseChanged.emit()
+        self.message.emit(f"Deleted {Path(path).name}.")
+        return {"ok": True, "file": path}
+
     @Slot(str, str, result="QVariantMap")
     def importIntoNew(self, spreadsheet: str, database_path: str) -> dict:  # noqa: N802
         """The first-run path: a spreadsheet becomes a brand new database."""
@@ -462,6 +521,103 @@ class Bridge(QObject):
         self.message.emit(f"Added {report['rows_added']} rows to {report['table']}.{note}")
         return {"ok": True, "table": report["table"], "rowsAdded": report["rows_added"],
                 "noteCount": report["note_count"], "notes": list(report["notes"])}
+
+    @Slot(str, result="QVariantList")
+    def workbookPlan(self, spreadsheet: str) -> list:  # noqa: N802
+        """Each sheet and the table it would become, and whether that table exists."""
+        try:
+            plan = workbook_plan(self.localPath(spreadsheet))
+        except OmarchyDBError:
+            return []
+        for item in plan:
+            item["exists"] = bool(self._storage and self._storage.has_table(item["table"]))
+        return plan
+
+    @Slot(str, bool, result="QVariantMap")
+    def importAllSheets(self, spreadsheet: str, replace: bool) -> dict:  # noqa: N802
+        """Every sheet becomes its own table, with guessed types. One confirm covers all clashes."""
+        if self._storage is None:
+            return {"ok": False, "error": "Open a database first."}
+        path = self.localPath(spreadsheet)
+        if not replace:
+            clashes = [item["table"] for item in self.workbookPlan(spreadsheet) if item["exists"]]
+            if clashes:
+                return {"ok": False, "needsConfirm": True, "tables": clashes, "table": clashes[0]}
+        if_exists = "replace" if replace else "error"
+
+        if self._storage.backend != SQLITE:
+            try:
+                report = import_workbook(self._storage, path, if_exists=if_exists)
+            except OmarchyDBError as error:
+                return {"ok": False, "error": str(error)}
+            return self._imported_all(report)
+
+        location = self._storage.location()
+
+        def work() -> dict:
+            with open_database(backend=SQLITE, path=location) as own:
+                return import_workbook(own, path, if_exists=if_exists)
+
+        def done(result: dict) -> None:
+            if result.get("ok", True) and "tables" in result:
+                result = self._imported_all(result)
+            self.importFinished.emit(result)
+
+        return self._start("Importing every sheet\u2026", work, done)
+
+    def _imported_all(self, report: dict) -> dict:
+        tables = [item["table"] for item in report["tables"]]
+        errors = [f"{item['sheet']}: {item['error']}" for item in report["errors"]]
+        self._refresh_tables(select=tables[0] if tables else self._current_table)
+        if tables:
+            word = "table" if len(tables) == 1 else "tables"
+            text = f"Made {len(tables)} {word}: {', '.join(tables)}."
+            if errors:
+                text += f" Skipped {len(errors)} sheet{'s' if len(errors) != 1 else ''}."
+            self.message.emit(text)
+        return {"ok": bool(tables), "tables": tables, "errors": errors,
+                "error": "" if tables else ("Nothing was imported. " + " ".join(errors))}
+
+    # -- fields and tables ------------------------------------------------------
+    @Slot(str, str, str, result="QVariantMap")
+    def renameField(self, old: str, new: str, label: str) -> dict:  # noqa: N802
+        """Change a field's name and/or label. Blank name means keep it."""
+        if self._storage is None or not self._current_table:
+            return {"ok": False, "error": "Pick a table first."}
+        new = (new or "").strip() or old
+        try:
+            result = schema.rename_field(
+                self._storage, self._current_table, old, new, label=(label or "").strip() or None
+            )
+        except OmarchyDBError as error:
+            return {"ok": False, "error": str(error)}
+        self._refresh_tables(select=self._current_table)
+        self.message.emit(f"Renamed {old} to {new}." if new != old else f"Relabelled {new}.")
+        return {"ok": True, "fields": result["fields"]}
+
+    @Slot(str, result="QVariantMap")
+    def deleteField(self, name: str) -> dict:  # noqa: N802
+        if self._storage is None or not self._current_table:
+            return {"ok": False, "error": "Pick a table first."}
+        try:
+            result = schema.drop_field(self._storage, self._current_table, name)
+        except OmarchyDBError as error:
+            return {"ok": False, "error": str(error)}
+        self._refresh_tables(select=self._current_table)
+        self.message.emit(f"Deleted the field {name}.")
+        return {"ok": True, "fields": result["fields"]}
+
+    @Slot(str, result="QVariantMap")
+    def deleteTable(self, table: str) -> dict:  # noqa: N802
+        if self._storage is None:
+            return {"ok": False, "error": "Open a database first."}
+        try:
+            result = schema.drop_table(self._storage, table)
+        except OmarchyDBError as error:
+            return {"ok": False, "error": str(error)}
+        self._refresh_tables()
+        self.message.emit(f"Deleted the table {table} and its {result['rows_deleted']} rows.")
+        return {"ok": True, "rowsDeleted": result["rows_deleted"]}
 
     @Slot(str, str, result="QVariantMap")
     def exportTable(self, url: str, file_format: str) -> dict:  # noqa: N802

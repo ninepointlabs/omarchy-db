@@ -219,6 +219,52 @@ class Storage(ABC):
         self.commit()
         return TableInfo(name=table, fields=list(fields), row_count=0)
 
+    # -- fields --------------------------------------------------------
+    def drop_field(self, table: str, name: str) -> TableInfo:
+        """Remove one column and everything in it. The table keeps at least one field."""
+        info = self.describe_table(table)
+        check_name(name, what="field name")
+        if name == ROW_ID:
+            raise BadName("The row number cannot be removed.")
+        if name not in {f.name for f in info.fields}:
+            raise BadName(f"The table {table!r} has no field called {name!r}.")
+        if len(info.fields) == 1:
+            raise BadName("A table needs at least one field. Delete the table instead.")
+        self.execute(f"ALTER TABLE {self.quote(table)} DROP COLUMN {self.quote(name)}")
+        remaining = [f for f in info.fields if f.name != name]
+        self.remember_fields(table, remaining)
+        self.commit()
+        return TableInfo(name=table, fields=remaining, row_count=info.row_count)
+
+    def rename_field(self, table: str, old: str, new: str, *, label: str | None = None) -> TableInfo:
+        """Change a column's name (and, if given, its label). Rows are untouched."""
+        info = self.describe_table(table)
+        check_name(old, what="field name")
+        check_name(new, what="field name")
+        names = [f.name for f in info.fields]
+        if old not in names:
+            raise BadName(f"The table {table!r} has no field called {old!r}.")
+        if new == ROW_ID:
+            raise BadName(f"{ROW_ID!r} is kept for the row number; pick another name.")
+        if new != old and new in names:
+            raise BadName(f"There is already a field called {new!r} in {table!r}.")
+        if new != old:
+            self.execute(
+                f"ALTER TABLE {self.quote(table)} RENAME COLUMN {self.quote(old)} TO {self.quote(new)}"
+            )
+        fields = [
+            Field(name=new if f.name == old else f.name, type=f.type,
+                  label=(label if label is not None else f.label) if f.name == old else f.label)
+            for f in info.fields
+        ]
+        self.remember_fields(table, fields)
+        self.commit()
+        return TableInfo(name=table, fields=fields, row_count=info.row_count)
+
+    def relabel_field(self, table: str, name: str, label: str) -> TableInfo:
+        """Change only the words people see for a field."""
+        return self.rename_field(table, name, name, label=label)
+
     def drop_table(self, table: str) -> None:
         check_user_table(table)
         self.execute(f"DROP TABLE IF EXISTS {self.quote(table)}")

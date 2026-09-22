@@ -20,6 +20,55 @@ Page {
         if (id > 0) confirmDelete.ask(id)
     }
 
+    FieldsDialog { id: fieldsDialog }
+
+    Dialog {
+        id: confirmDeleteTable
+        property string table: ""
+        property int rows: 0
+        function ask() {
+            table = Bridge.currentTable
+            for (const t of Bridge.tables) if (t.name === table) rows = t.rows
+            open()
+        }
+        title: "Delete the table \u201c" + table + "\u201d?"
+        modal: true
+        anchors.centerIn: parent
+        width: 460
+        padding: 20
+        Overlay.modal: Rectangle { color: Theme.isDark ? "#99000000" : "#55000000" }
+        contentItem: Label {
+            text: "Its " + rows + (rows === 1 ? " row" : " rows") + ", its form and its reports will be gone. This cannot be undone."
+            wrapMode: Text.WordWrap
+        }
+        footer: DialogButtonBox {
+            ActionButton { text: "Keep it"; DialogButtonBox.buttonRole: DialogButtonBox.RejectRole }
+            ActionButton { text: "Delete the table"; primary: true; DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole }
+        }
+        onAccepted: { const r = Bridge.deleteTable(table); if (!r.ok) toast.show(r.error) }
+    }
+
+    Dialog {
+        id: confirmDeleteDatabase
+        title: "Delete this whole database?"
+        modal: true
+        anchors.centerIn: parent
+        width: 520
+        padding: 20
+        Overlay.modal: Rectangle { color: Theme.isDark ? "#99000000" : "#55000000" }
+        contentItem: ColumnLayout {
+            spacing: 8
+            Label { Layout.fillWidth: true; text: "The file will be removed from your computer:"; wrapMode: Text.WordWrap }
+            Label { Layout.fillWidth: true; text: Bridge.location; font.family: Theme.monoFont; wrapMode: Text.WrapAnywhere }
+            Label { Layout.fillWidth: true; text: "Every table and every row in it will be gone. This cannot be undone."; wrapMode: Text.WordWrap; color: Theme.red }
+        }
+        footer: DialogButtonBox {
+            ActionButton { text: "Keep it"; DialogButtonBox.buttonRole: DialogButtonBox.RejectRole }
+            ActionButton { text: "Delete the database"; primary: true; DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole }
+        }
+        onAccepted: { const r = Bridge.deleteDatabase(); if (!r.ok) toast.show(r.error) }
+    }
+
     Dialog {
         id: confirmDelete
         property int rowId: 0
@@ -190,6 +239,14 @@ Page {
                 buttonText: "Import spreadsheet"
                 onClicked: win.startImport()
             }
+            ActionButton {
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: 12
+                visible: Bridge.tables.length === 0 && Bridge.isLocalFile
+                text: "Delete this whole database\u2026"
+                onClicked: confirmDeleteDatabase.open()
+            }
 
             EmptyState {
                 anchors.fill: parent
@@ -224,6 +281,19 @@ Page {
                         text: "Delete row"
                         enabled: page.mode === "form" ? formView.rowId > 0 : page.selectedRow >= 0
                         onClicked: page.deleteSelected()
+                    }
+                    ActionButton {
+                        text: "More\u2026"
+                        objectName: "moreButton"
+                        onClicked: moreMenu.open()
+                        Menu {
+                            id: moreMenu
+                            y: parent.height
+                            MenuItem { text: "Fields: rename or delete\u2026"; onTriggered: fieldsDialog.openFor() }
+                            MenuSeparator {}
+                            MenuItem { text: "Delete this table\u2026"; onTriggered: confirmDeleteTable.ask() }
+                            MenuItem { text: "Delete this whole database\u2026"; enabled: Bridge.isLocalFile; onTriggered: confirmDeleteDatabase.open() }
+                        }
                     }
                 }
 

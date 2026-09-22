@@ -18,7 +18,7 @@ from typing import Any
 from . import catalog
 from .errors import OmarchyDBError
 from .exporter import export_table
-from .importer import import_spreadsheet, plan_import
+from .importer import import_spreadsheet, import_workbook, plan_import
 from .reports import export_report
 from .storage import BACKENDS, create_database, open_database
 
@@ -51,6 +51,17 @@ def cmd_new(args: argparse.Namespace) -> int:
 
 
 def cmd_import(args: argparse.Namespace) -> int:
+    if args.all_sheets:
+        with open_database(backend="sqlite", path=args.path) as storage:
+            result = import_workbook(
+                storage, args.file, if_exists="replace" if args.replace else "error"
+            )
+            _remember(storage)
+        for item in result["tables"]:
+            print(f"Added {item['rows_added']} rows to the table {item['table']!r} ({item['fields']} fields) from sheet {item['sheet']!r}.")
+        for item in result["errors"]:
+            print(f"Skipped sheet {item['sheet']!r}: {item['error']}")
+        return 0 if result["tables"] or not result["errors"] else 2
     with open_database(backend="sqlite", path=args.path) as storage:
         result = import_spreadsheet(
             storage,
@@ -155,6 +166,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("file")
     sub.add_argument("--table")
     sub.add_argument("--sheet", help="Excel only: which sheet (default: the first)")
+    sub.add_argument("--all-sheets", action="store_true", help="Excel only: every sheet becomes its own table")
     sub.add_argument("--replace", action="store_true", help="Replace a table of the same name")
     sub.set_defaults(func=cmd_import)
 

@@ -207,3 +207,39 @@ def test_row_form_and_report_tools(sandbox, pets_csv):
     assert direct["title"] == "Quick"
     assert HANDLERS["export_table"]({"path": db, "table": "pets", "file": str(sandbox / "t.pdf"), "format": "pdf"})["format"] == "pdf"
     assert HANDLERS["delete_report"]({"path": db, "name": "Names"})["deleted"] is True
+
+
+def test_schema_tools_and_import_all_sheets(sandbox, pets_csv):
+    openpyxl = pytest.importorskip("openpyxl")
+    from omarchy_db_mcp.server import HANDLERS
+
+    db = str(sandbox / "schema.omadb")
+    HANDLERS["create_database"]({"title": "S", "path": db})
+    HANDLERS["import_spreadsheet"]({"path": db, "file": str(pets_csv)})
+
+    renamed = HANDLERS["rename_field"]({"path": db, "table": "pets", "field": "weight_kg", "new_name": "weight", "label": "Weight"})
+    assert renamed["fields"][-1] == {"name": "weight", "type": "real", "label": "Weight"}
+    relabelled = HANDLERS["rename_field"]({"path": db, "table": "pets", "field": "age", "label": "Years"})
+    assert relabelled["fields"][1]["label"] == "Years"
+    dropped = HANDLERS["delete_field"]({"path": db, "table": "pets", "field": "adopted_on"})
+    assert dropped["deleted"] == "adopted_on"
+    assert [f["name"] for f in dropped["fields"]] == ["name", "age", "is_good", "weight"]
+
+    book = openpyxl.Workbook()
+    a = book.active; a.title = "One"; a.append(["X"]); a.append([1])
+    b = book.create_sheet("Two"); b.append(["Y"]); b.append([2])
+    book.save(sandbox / "two.xlsx")
+    result = HANDLERS["import_spreadsheet"]({"path": db, "file": str(sandbox / "two.xlsx"), "all_sheets": True})
+    assert [t["table"] for t in result["tables"]] == ["one", "two"]
+    single = HANDLERS["import_spreadsheet"]({"path": db, "file": str(sandbox / "two.xlsx"), "table": "just_one"})
+    assert single["table"] == "just_one"
+
+    gone = HANDLERS["delete_table"]({"path": db, "table": "two"})
+    assert gone["deleted"] is True and gone["rows_deleted"] == 1
+    assert "two" not in [t["name"] for t in HANDLERS["list_tables"]({"path": db})["tables"]]
+
+    with pytest.raises(Exception, match="confirm"):
+        HANDLERS["delete_database"]({"path": db, "confirm": False})
+    assert (sandbox / "schema.omadb").exists()
+    assert HANDLERS["delete_database"]({"path": db, "confirm": True})["deleted"] is True
+    assert not (sandbox / "schema.omadb").exists()

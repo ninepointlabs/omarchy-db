@@ -30,6 +30,27 @@ def app():
     return QGuiApplication.instance() or make_app(["omarchy-db-app"])
 
 
+def wait_for_import(bridge, timeout_ms: int = 30000) -> dict:
+    """Run the event loop until the worker reports back (polling would starve it of the GIL)."""
+    from PySide6.QtCore import QEventLoop, QTimer
+
+    loop = QEventLoop()
+    results = []
+
+    def done(result):
+        results.append(dict(result))
+        loop.quit()
+
+    bridge.importFinished.connect(done)
+    try:
+        QTimer.singleShot(timeout_ms, loop.quit)
+        loop.exec()
+    finally:
+        bridge.importFinished.disconnect(done)
+    assert results, "the import never finished"
+    return results[0]
+
+
 @pytest.fixture
 def bridge(app, sandbox):
     from omarchy_db_app.bridge import Bridge
@@ -336,8 +357,6 @@ def test_grid_edit_goes_through_set_data(pets):
 # -- the import wizard and the worker thread ------------------------------------
 
 def test_plan_import_and_import_planned_off_the_gui_thread(bridge, sandbox, pets_csv):
-    from PySide6.QtTest import QTest
-
     bridge.newDatabase("sqlite", str(sandbox / "w.omadb"), "W", {})
     plan = bridge.planImport(str(pets_csv), "")
     assert plan["ok"] is True
@@ -348,19 +367,13 @@ def test_plan_import_and_import_planned_off_the_gui_thread(bridge, sandbox, pets
     # Change a guess: keep age as words, and call the table something else.
     fields = [dict(f) for f in plan["fields"]]
     fields[1]["type"] = "text"
-    results = []
-    bridge.importFinished.connect(results.append)
     started = bridge.importPlanned(str(pets_csv), "", "animals", fields, False)
     assert started == {"ok": True, "pending": True}
     assert bridge.busy is True
-    QTest.qWait(50)
-    for _ in range(100):
-        if results:
-            break
-        QTest.qWait(50)
-    assert results and results[0]["ok"] is True, results
-    assert results[0]["table"] == "animals"
-    assert results[0]["rowsAdded"] == 4
+    result = wait_for_import(bridge)
+    assert result["ok"] is True, result
+    assert result["table"] == "animals"
+    assert result["rowsAdded"] == 4
     assert bridge.busy is False
     assert bridge.currentTable == "animals"
     assert bridge.fields[1]["type"] == "text"
@@ -411,3 +424,81 @@ def test_report_bridge_builds_previews_and_keeps(app, bridge, sandbox, pets_csv)
     assert report.forget("Names and ages")["ok"] is True
     assert report.build({"table": "pets", "columns": ["nope"]})["ok"] is False
     assert "nope" in report.error
+
+
+# -- fields, tables, the whole file ------------------------------------------------
+
+def test_rename_and_delete_field_from_the_bridge(pets):
+    renamed = pets.renameField("weight_kg", "weight", "Weight")
+    assert renamed["ok"] is True
+    assert pets.fields[-1] == {"name": "weight", "type": "real", "label": "Weight"}
+    assert pets.rows.headerData(5, PySide6.QtCore.Qt.Orientation.Horizontal) == "Weight"
+    relabel = pets.renameField("age", "", "Years")
+    assert relabel["ok"] is True
+    assert pets.fields[1]["label"] == "Years"
+    assert pets.renameField("age", "name", "")["ok"] is False
+    gone = pets.deleteField("adopted_on")
+    assert gone["ok"] is True
+    assert [f["name"] for f in pets.fields] == ["name", "age", "is_good", "weight"]
+    assert pets.rows.columnCount() == 5
+    assert pets.totalRows == 4
+
+
+def test_delete_table_from_the_bridge(pets):
+    assert pets.deleteTable("pets") == {"ok": True, "rowsDeleted": 4}
+    assert pets.tables == []
+    assert pets.currentTable == ""
+    assert pets.deleteTable("pets")["ok"] is False
+
+
+def test_delete_database_from_the_bridge(bridge, sandbox, pets_csv):
+    bridge.importIntoNew(str(pets_csv), str(sandbox / "doomed.omadb"))
+    assert bridge.isLocalFile is True
+    path = bridge.location
+    result = bridge.deleteDatabase()
+    assert result == {"ok": True, "file": path}
+    assert bridge.isOpen is False
+    assert not (sandbox / "doomed.omadb").exists()
+    assert bridge.recent() == []
+    assert bridge.deleteDatabase()["ok"] is False
+
+
+def test_recent_list_remove_and_delete_file(bridge, sandbox):
+    bridge.newDatabase("sqlite", str(sandbox / "a.omadb"), "A", {})
+    bridge.newDatabase("sqlite", str(sandbox / "b.omadb"), "B", {})
+    bridge.closeDatabase()
+    assert [r["title"] for r in bridge.recent()] == ["B", "A"]
+    assert bridge.removeRecent(0)["ok"] is True
+    assert [r["title"] for r in bridge.recent()] == ["A"]
+    assert (sandbox / "b.omadb").exists()
+    assert bridge.deleteRecentFile(0)["ok"] is True
+    assert not (sandbox / "a.omadb").exists()
+    assert bridge.recent() == []
+
+
+def test_import_every_sheet_from_the_bridge(bridge, sandbox):
+    openpyxl = pytest.importorskip("openpyxl")
+
+    book = openpyxl.Workbook()
+    a = book.active; a.title = "People"; a.append(["Name", "Age"]); a.append(["Ann", 31])
+    b = book.create_sheet("Places"); b.append(["City"]); b.append(["Tyler"])
+    book.create_sheet("Blank")
+    book.save(sandbox / "three.xlsx")
+    bridge.newDatabase("sqlite", str(sandbox / "all.omadb"), "All", {})
+    url = QUrl.fromLocalFile(str(sandbox / "three.xlsx")).toString()
+
+    plan = bridge.workbookPlan(url)
+    assert [(p["sheet"], p["table"], p["exists"]) for p in plan] == [
+        ("People", "people", False), ("Places", "places", False), ("Blank", "blank", False)]
+
+    assert bridge.importAllSheets(url, False) == {"ok": True, "pending": True}
+    result = wait_for_import(bridge)
+    assert result["ok"] is True, result
+    assert result["tables"] == ["people", "places"]
+    assert len(result["errors"]) == 1 and result["errors"][0].startswith("Blank:")
+    assert [t["name"] for t in bridge.tables] == ["people", "places"]
+
+    # A second time, one confirm covers every clash.
+    again = bridge.importAllSheets(url, False)
+    assert again["needsConfirm"] is True
+    assert again["tables"] == ["people", "places"]

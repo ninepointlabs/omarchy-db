@@ -2,6 +2,75 @@
 
 **Phase B (forms, Excel, reports, printing). Last updated 2026-09-22.**
 
+## 2026-09-22 — Import every sheet, delete things, rename fields
+
+Tim's asks after the Tyler import, all landed:
+
+**Import every sheet as its own table (off by default).** The import wizard
+shows a checkbox, "Import every sheet as its own table", only when the
+workbook has more than one sheet. Unchecked (the default) nothing changes:
+one sheet, one table, editable types. Checked, the sheet picker and the
+column list give way to a list of "sheet → table" names; each sheet uses
+guessed types (the wizard says so); the button reads "Import 3 sheets". If
+some of those tables already exist, **one** confirm names them all
+("Replace 2 tables? These are already in this database: a, b") rather than
+one dialog per sheet. The work runs on the worker thread and one
+`importFinished` carries `{tables, errors}`; a sheet that cannot be read
+(empty, no column names) is skipped and named in a toast, the rest still go
+in. Core: `importer.import_workbook`; CLI `import --all-sheets`; MCP
+`import_spreadsheet` with `all_sheets: true` (or `sheet: "*"`). Verified on
+Tim's Tyler workbook through the app's wizard path: three tables
+(`consolidated_list` 15 fields / 25 rows, `clean_list_for_print` 9 / 32,
+`no_longer_in_the_area` 15 / 8) in 0.05 s.
+
+**Delete.** Rows: unchanged (Delete row above the grid, Delete this row in
+the form, confirm each). New, each with its own confirm in plain words:
+
+- *Fields*: More… → "Fields: rename or delete…" lists every field (label,
+  name inside, type) with Rename… and Delete…. Delete warns that everything
+  in that column is gone. A table keeps at least one field (the storage
+  refuses to drop the last one; delete the table instead). Storage
+  `drop_field` is `ALTER TABLE … DROP COLUMN` on all three engines (SQLite
+  ≥ 3.35; this machine has 3.53).
+- *Tables*: More… → "Delete this table…" names the table and its row count;
+  the table's kept form and reports go with it (`schema.drop_table`).
+- *Whole database*: More… → "Delete this whole database…" shows the file
+  path and "cannot be undone"; the connection closes, the file and any
+  `-wal` / `-shm` / `-journal` sidecars are removed, the recent list forgets
+  it, and the window returns Home. Only for a local `.omadb`; for a
+  PostgreSQL or MySQL database the menu item is disabled and the bridge
+  and MCP refuse with "a server database is left alone". On Home, each
+  recent entry has a "…" menu with "Remove from this list" and "Delete the
+  file…" (the latter confirms; disabled for server entries).
+
+**Rename fields.** Rename… opens a dialog with *Label* (what people see)
+and *Name inside the database*, pre-filled; Save changes either or both.
+Storage `rename_field` is `ALTER TABLE … RENAME COLUMN` plus the field
+meta; `relabel_field` touches only the meta. Names follow the usual rules
+(letters, numbers, underscores; not `id`; no clash). Kept forms and reports
+follow the new name (`schema._retarget`); a dropped field is taken out of
+them, and a report left with no columns is forgotten rather than left
+broken.
+
+**MCP** (23 tools now): `rename_field` (name and/or label), `delete_field`,
+`delete_table`, `delete_database` (sqlite path only, needs `confirm: true`),
+and `all_sheets` on `import_spreadsheet`.
+
+**Also**: the importer now parses a workbook once and keeps the last one
+(keyed on path, mtime and size), so planning and importing every sheet no
+longer re-reads the file per sheet. The worker-thread tests now wait on the
+`importFinished` signal with an event loop instead of polling (see the note
+below on why polling starves the worker).
+
+Tests: 143 pass (`tests/test_schema.py` is new: rename, relabel, refusals,
+drop field and its data, last-field guard, forms/reports following renames
+and drops, drop table, delete file, import every sheet incl. an empty sheet
+and a CSV; plus bridge and MCP tests for each).
+
+To try it: open a database, Import spreadsheet, pick the Tyler workbook,
+tick "Import every sheet as its own table", Import. Then More… for Fields
+and the two deletes; "…" on a Home entry for the file.
+
 ## Fix 2026-09-22 — Excel import of a titled sheet collapsed to one column
 
 Tim imported `Tyler_Community_Consolidated_List_1.1.xlsx` and got a single
@@ -120,8 +189,9 @@ unit test performs the same rm-rf-then-rename twice.
 
 ## Verified
 
-- `python -m pytest` — **127 passed** (123 after Phase B plus the four Excel
-  header tests; the 123 were 101 after A2, plus theme swap, editing,
+- `python -m pytest` — **143 passed** (127 after the Excel header fix plus
+  schema, import-all, bridge and MCP tests; the 127 were 123 after Phase B
+  plus the four Excel header tests; the 123 were 101 after A2, plus theme swap, editing,
   import worker, export, report bridge, xlsx round trip, sheet choice, saved
   formula values, column fitting, pagination, PDF bytes, printer path,
   preview orientation, forms and reports kept in the database, and the new
@@ -214,7 +284,8 @@ unit test performs the same rm-rf-then-rename twice.
 
 ## Loose ends worth a later pass
 
-- Column renaming in the import wizard (labels are shown, not editable).
+- Column renaming in the import wizard itself (rename after import via
+  More… → Fields instead).
 - Filter and sort in the grid (the brief's "filter/sort simple" for table view).
 - Reports: choose sort order; group headings; a header/footer of your own.
 - Open a database on the worker thread too (only imports are off-thread today).

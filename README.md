@@ -18,10 +18,12 @@ for exactly what works today.
 - **Import a spreadsheet.** Drop a CSV or Excel file on the window. Omarchy-DB
   works out each column (words, whole numbers, numbers with decimals, dates,
   or yes/no), shows you its guesses, and lets you change them before anything
-  is written.
+  is written. A workbook with several sheets can become one table per sheet.
 - **Look at your rows.** A grid of everything in a table. Tap a row to pick
   it, double-tap a cell to change it.
 - **Type into a form.** One record at a time: Previous, Next, Save, New row.
+- **Change your mind.** Rename a field, delete a field, delete a table, or
+  delete the whole database file. Each one asks first.
 - **Print a tidy report.** Pick the columns, a title, the page size. Columns
   shrink and wrap so the whole table fits the page width. See it before you
   print it, or save it as a PDF.
@@ -106,9 +108,10 @@ Excel file anywhere on the window and it becomes a database (or a table, if
 one is already open). Nothing is replaced without asking first.
 
 Inside a database: **Grid** and **Form** show the same table two ways.
-**Add row** and **Delete row** do what they say. **Print report** opens the
-report designer with a live preview, **Print…** and **Save PDF…**. **Export…**
-writes the table as CSV or Excel.
+**Add row** and **Delete row** do what they say. **More…** holds the rest:
+rename or delete fields, delete the table, delete the whole database file.
+**Print report** opens the report designer with a live preview, **Print…**
+and **Save PDF…**. **Export…** writes the table as CSV or Excel.
 
 ### The command line
 
@@ -116,6 +119,7 @@ writes the table as CSV or Excel.
 omarchy-db backends                                   # what kinds of database you can make
 omarchy-db new "My Pets" ~/Documents/pets.omadb       # make one
 omarchy-db import ~/Documents/pets.omadb pets.csv     # put a spreadsheet in it
+omarchy-db import ~/Documents/pets.omadb book.xlsx --all-sheets   # one table per sheet
 omarchy-db tables ~/Documents/pets.omadb              # what's in there
 omarchy-db rows ~/Documents/pets.omadb pets           # look at the rows
 omarchy-db export ~/Documents/pets.omadb pets out.csv # send it back out (--format csv|xlsx|pdf)
@@ -139,6 +143,7 @@ Then ask it to do the work:
 The tools are `list_backends`, `create_database`, `list_databases`,
 `open_database`, `plan_import`, `import_spreadsheet`, `list_tables`,
 `describe_table`, `list_rows`, `add_row`, `update_row`, `delete_row`,
+`rename_field`, `delete_field`, `delete_table`, `delete_database`,
 `create_form`, `get_form`, `create_report`, `list_reports`, `delete_report`,
 `export_report` and `export_table`. Run `omarchy-db-mcp --tools` to print
 their schemas.

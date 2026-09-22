@@ -19,7 +19,7 @@ from .errors import (
 )
 from .exporter import export_table
 from .fields import FIELD_TYPE_LABELS, FIELD_TYPES, Field
-from .importer import import_spreadsheet, plan_import
+from .importer import import_spreadsheet, import_workbook, plan_import
 from .storage import (
     BACKENDS,
     MYSQL,
@@ -57,6 +57,7 @@ __all__ = [
     "create_database",
     "export_table",
     "import_spreadsheet",
+    "import_workbook",
     "open_database",
     "plan_import",
     "recent",

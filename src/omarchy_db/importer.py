@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from .errors import ImportProblem
+from .errors import ImportProblem, OmarchyDBError
 from .fields import Field, coerce, slugify_name
 from .infer import infer_fields
 from .paths import resolve_under_roots
@@ -196,15 +196,43 @@ def _fill_blank_headings(headers: list[str], *, trim: bool = True) -> list[str]:
     return [name or f"Column {index + 1}" for index, name in enumerate(headers)]
 
 
+#: The last workbook read, parsed once: planning and importing every sheet
+#: of one file otherwise opens it again and again.
+_last_book: dict[str, Any] = {}
+
+
+def _book_key(path: Path) -> tuple:
+    stat = path.stat()
+    return (str(path), stat.st_mtime_ns, stat.st_size)
+
+
+def _parsed_book(path: Path) -> dict[str, Any]:
+    key = _book_key(path)
+    if _last_book.get("key") == key:
+        return _last_book
+    book = _load_book(path)
+    try:
+        sheets = list(book.sheetnames)
+        regions = {name: _sheet_region_or_error(book[name]) for name in sheets}
+    finally:
+        book.close()
+    _last_book.clear()
+    _last_book.update({"key": key, "sheets": sheets, "regions": regions})
+    return _last_book
+
+
+def _sheet_region_or_error(worksheet):
+    try:
+        return _sheet_region(worksheet)
+    except ImportProblem as error:
+        return error
+
+
 def list_sheets(path: Path) -> list[str]:
     """The sheet names in a workbook; a CSV has one unnamed sheet."""
     if path.suffix.lower() not in EXCEL_SUFFIXES:
         return []
-    book = _load_book(path)
-    try:
-        return list(book.sheetnames)
-    finally:
-        book.close()
+    return list(_parsed_book(path)["sheets"])
 
 
 def read_xlsx(
@@ -219,30 +247,29 @@ def read_xlsx(
     `data_only=True` means a formula cell gives the value Excel last saved for
     it. Nothing is calculated here, and no macro is ever touched.
     """
-    book = _load_book(path)
-    try:
-        if sheet:
-            if sheet not in book.sheetnames:
-                names = ", ".join(book.sheetnames)
-                raise ImportProblem(f"There is no sheet called {sheet!r}. This file has: {names}.")
-            worksheet = book[sheet]
-        else:
-            worksheet = book.worksheets[0]
-        headers, data = _sheet_region(worksheet)
-        if not headers:
-            raise ImportProblem("That sheet has no column names.")
-        rows: list[list[str]] = []
-        for raw in data:
-            cells = [_excel_text(cell) for cell in raw[: len(headers)]]
-            cells += [""] * (len(headers) - len(cells))
-            if not any(cell.strip() for cell in cells):
-                continue
-            rows.append(cells)
-            if max_rows is not None and len(rows) >= max_rows:
-                break
-    finally:
-        book.close()
-    return headers, rows
+    parsed = _parsed_book(path)
+    if sheet:
+        if sheet not in parsed["sheets"]:
+            names = ", ".join(parsed["sheets"])
+            raise ImportProblem(f"There is no sheet called {sheet!r}. This file has: {names}.")
+    else:
+        sheet = parsed["sheets"][0]
+    region = parsed["regions"][sheet]
+    if isinstance(region, ImportProblem):
+        raise region
+    headers, data = region
+    if not headers:
+        raise ImportProblem("That sheet has no column names.")
+    rows: list[list[str]] = []
+    for raw in data:
+        cells = [_excel_text(cell) for cell in raw[: len(headers)]]
+        cells += [""] * (len(headers) - len(cells))
+        if not any(cell.strip() for cell in cells):
+            continue
+        rows.append(cells)
+        if max_rows is not None and len(rows) >= max_rows:
+            break
+    return list(headers), rows
 
 
 def read_sheet(
@@ -340,3 +367,44 @@ def import_spreadsheet(
         "note_count": len(problems),
         "replaced_existing": existed and if_exists == "replace",
     }
+
+
+def import_workbook(
+    storage: Storage,
+    file_path: str,
+    *,
+    if_exists: str = "error",
+) -> dict[str, Any]:
+    """Every sheet of a workbook becomes its own table, named after the sheet.
+
+    Each sheet uses the guessed types. A sheet that cannot be read (empty, or
+    no column names) is reported, not fatal; the others still go in. With
+    `if_exists="error"` a sheet whose table already exists is reported the
+    same way. A CSV is one sheet, so it just imports.
+    """
+    path = resolve_under_roots(file_path, must_exist=True)
+    sheets = list_sheets(path) or [None]
+    tables: list[dict[str, Any]] = []
+    errors: list[dict[str, Any]] = []
+    for sheet in sheets:
+        try:
+            result = import_spreadsheet(storage, str(path), sheet=sheet, if_exists=if_exists)
+        except OmarchyDBError as error:
+            errors.append({"sheet": sheet or path.name, "error": str(error)})
+            continue
+        tables.append({
+            "sheet": result["sheet"], "table": result["table"], "rows_added": result["rows_added"],
+            "fields": len(result["created_fields"]), "note_count": result["note_count"],
+            "replaced_existing": result["replaced_existing"],
+        })
+    return {"file": str(path), "tables": tables, "errors": errors}
+
+
+def workbook_plan(file_path: str) -> list[dict[str, Any]]:
+    """For each sheet: the table it would become, and whether that table exists is up to the caller."""
+    path = resolve_under_roots(file_path, must_exist=True)
+    sheets = list_sheets(path) or [None]
+    out = []
+    for sheet in sheets:
+        out.append({"sheet": sheet or "", "table": table_name_for(path, sheet)})
+    return out

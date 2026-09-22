@@ -29,7 +29,8 @@ from omarchy_db import __version__, catalog
 from omarchy_db.errors import OmarchyDBError
 from omarchy_db.exporter import export_table
 from omarchy_db.fields import FIELD_TYPES
-from omarchy_db.importer import import_spreadsheet, plan_import
+from omarchy_db import schema
+from omarchy_db.importer import import_spreadsheet, import_workbook, plan_import
 from omarchy_db.reports import (
     delete_report,
     export_report,
@@ -136,17 +137,56 @@ def tool_import_spreadsheet(arguments: dict[str, Any]) -> dict[str, Any]:
     if if_exists not in ("error", "skip", "replace"):
         raise OmarchyDBError("if_exists must be 'error', 'skip' or 'replace'.")
     with _open(arguments) as storage:
-        result = import_spreadsheet(
-            storage,
-            arguments["file"],
-            table=arguments.get("table"),
-            if_exists=if_exists,
-            sheet=arguments.get("sheet"),
-        )
+        if arguments.get("all_sheets") or arguments.get("sheet") == "*":
+            result = import_workbook(storage, arguments["file"], if_exists=if_exists)
+        else:
+            result = import_spreadsheet(
+                storage,
+                arguments["file"],
+                table=arguments.get("table"),
+                if_exists=if_exists,
+                sheet=arguments.get("sheet"),
+            )
         _remember(storage)
     if if_exists == "replace":
         result["note"] = "Any table of that name was dropped first."
     return result
+
+
+def tool_rename_field(arguments: dict[str, Any]) -> dict[str, Any]:
+    with _open(arguments) as storage:
+        new = arguments.get("new_name") or arguments["field"]
+        return schema.rename_field(
+            storage, arguments["table"], arguments["field"], new, label=arguments.get("label")
+        )
+
+
+def tool_delete_field(arguments: dict[str, Any]) -> dict[str, Any]:
+    with _open(arguments) as storage:
+        result = schema.drop_field(storage, arguments["table"], arguments["field"])
+    result["deleted"] = arguments["field"]
+    result["note"] = "Everything that was in that field is gone."
+    return result
+
+
+def tool_delete_table(arguments: dict[str, Any]) -> dict[str, Any]:
+    with _open(arguments) as storage:
+        result = schema.drop_table(storage, arguments["table"])
+    result["deleted"] = True
+    result["note"] = f"The table and its {result['rows_deleted']} rows are gone."
+    return result
+
+
+def tool_delete_database(arguments: dict[str, Any]) -> dict[str, Any]:
+    if not arguments.get("confirm"):
+        raise OmarchyDBError("Deleting a database cannot be undone. Call again with confirm: true.")
+    if arguments.get("backend", "sqlite") != "sqlite":
+        raise OmarchyDBError(
+            "Only a database file on this computer can be deleted here. "
+            "A server database is left alone; ask the server's own tools."
+        )
+    storage = _open(arguments)
+    return schema.delete_database_file(storage, arguments["path"])
 
 
 def tool_list_tables(arguments: dict[str, Any]) -> dict[str, Any]:
@@ -365,8 +405,9 @@ TOOLS: list[dict[str, Any]] = [
             "properties": {
                 **_TARGET_PROPERTIES,
                 "file": {"type": "string", "description": "The CSV or .xlsx file to read."},
-                "sheet": {"type": "string", "description": "Excel only: which sheet. Defaults to the first."},
-                "table": {"type": "string", "description": "Table name. Defaults to the file (or sheet) name."},
+                "sheet": {"type": "string", "description": "Excel only: which sheet. Defaults to the first. '*' means every sheet."},
+                "all_sheets": {"type": "boolean", "default": False, "description": "Excel only: every sheet becomes its own table, named after the sheet, with guessed types. The result lists tables and errors."},
+                "table": {"type": "string", "description": "Table name. Defaults to the file (or sheet) name. Ignored with all_sheets."},
                 "if_exists": {
                     "type": "string",
                     "enum": ["error", "skip", "replace"],
@@ -591,6 +632,66 @@ TOOLS: list[dict[str, Any]] = [
             "additionalProperties": False,
         },
         "handler": tool_export_report,
+    },
+    {
+        "name": "rename_field",
+        "description": (
+            "Rename a field (column) and/or change the label people see. Rows are untouched; "
+            "kept forms and reports follow the new name."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                **_TARGET_PROPERTIES,
+                "table": {"type": "string"},
+                "field": {"type": "string", "description": "The field's current name."},
+                "new_name": {"type": "string", "description": "The new name: letters, numbers, underscores. Leave out to change only the label."},
+                "label": {"type": "string", "description": "The words people see for it."},
+            },
+            "required": ["table", "field"],
+            "additionalProperties": False,
+        },
+        "handler": tool_rename_field,
+    },
+    {
+        "name": "delete_field",
+        "description": "Delete a field (column) and everything in it. Cannot be undone. A table keeps at least one field.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {**_TARGET_PROPERTIES, "table": {"type": "string"}, "field": {"type": "string"}},
+            "required": ["table", "field"],
+            "additionalProperties": False,
+        },
+        "handler": tool_delete_field,
+    },
+    {
+        "name": "delete_table",
+        "description": "Delete a table, all its rows, its form and its reports. Cannot be undone.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {**_TARGET_PROPERTIES, "table": {"type": "string"}},
+            "required": ["table"],
+            "additionalProperties": False,
+        },
+        "handler": tool_delete_table,
+    },
+    {
+        "name": "delete_database",
+        "description": (
+            "Delete a database FILE on this computer (sqlite only) and forget it. Cannot be undone; "
+            "needs confirm: true. Server databases are never dropped by Omarchy-DB."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "backend": {"type": "string", "enum": ["sqlite"], "default": "sqlite"},
+                "path": {"type": "string", "description": "The .omadb file."},
+                "confirm": {"type": "boolean", "default": False},
+            },
+            "required": ["path", "confirm"],
+            "additionalProperties": False,
+        },
+        "handler": tool_delete_database,
     },
 ]
 
