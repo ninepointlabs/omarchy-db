@@ -47,18 +47,70 @@ class RowsModel(QAbstractTableModel):
         super().__init__(parent)
         self._headings: list[str] = []
         self._kinds: list[str | None] = []
+        self._names: list[str] = []
         self._rows: list[list[str]] = []
+        self._raw: list[list[Any]] = []
+        #: Called with (row_id, field_name, new_text) when a cell is edited in the grid.
+        self.editor: Any = None
 
     def load(self, page: dict[str, Any]) -> None:
         self.beginResetModel()
         self._headings = ["#"] + [field["label"] for field in page["fields"]]
         self._kinds = [None] + [field["type"] for field in page["fields"]]
+        self._names = ["id"] + [field["name"] for field in page["fields"]]
+        self._raw = [list(row) for row in page["rows"]]
         self._rows = [
             [_cell_text(value, self._kinds[i] if i < len(self._kinds) else None)
              for i, value in enumerate(row)]
-            for row in page["rows"]
+            for row in self._raw
         ]
         self.endResetModel()
+
+    def flags(self, index: QModelIndex) -> Qt.ItemFlag:
+        base = Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
+        if index.isValid() and index.column() > 0:
+            base |= Qt.ItemFlag.ItemIsEditable
+        return base
+
+    def setData(self, index: QModelIndex, value: Any, role: int = Qt.ItemDataRole.EditRole) -> bool:  # noqa: N802
+        """An edit made in the grid. The bridge writes it and reloads the table."""
+        if not index.isValid() or index.column() == 0 or self.editor is None:
+            return False
+        if role not in (Qt.ItemDataRole.EditRole, Qt.ItemDataRole.DisplayRole):
+            return False
+        row = index.row()
+        if row >= len(self._raw) or index.column() >= len(self._names):
+            return False
+        return bool(self.editor(self._raw[row][0], self._names[index.column()], value))
+
+    @Slot(int, result=int)
+    def rowId(self, row: int) -> int:  # noqa: N802
+        if 0 <= row < len(self._raw):
+            return int(self._raw[row][0])
+        return 0
+
+    @Slot(int, result=int)
+    def rowIndexOf(self, row_id: int) -> int:  # noqa: N802
+        for index, row in enumerate(self._raw):
+            if int(row[0]) == int(row_id):
+                return index
+        return -1
+
+    @Slot(int, result="QVariantMap")
+    def record(self, row: int) -> dict[str, Any]:
+        """One row for the form: field name -> value (yes/no as true/false, blanks as "")."""
+        if not (0 <= row < len(self._raw)):
+            return {"id": 0, "values": {}}
+        values: dict[str, Any] = {}
+        for column, name in enumerate(self._names):
+            if column == 0:
+                continue
+            raw = self._raw[row][column]
+            if self._kinds[column] == "boolean":
+                values[name] = bool(raw) if raw is not None else False
+            else:
+                values[name] = "" if raw is None else str(raw)
+        return {"id": int(self._raw[row][0]), "values": values}
 
     def clear(self) -> None:
         self.load({"fields": [], "rows": []})
@@ -122,6 +174,8 @@ class Bridge(QObject):
         self._shown = 0
         self._total = 0
         self._rows = RowsModel(self)
+        self._rows.editor = self._edit_cell
+        self._fields: list[dict[str, Any]] = []
 
     # -- what the window can read ---------------------------------------
     @Property(QObject, constant=True)
@@ -151,6 +205,11 @@ class Bridge(QObject):
     @Property(str, notify=tableChanged)
     def currentTable(self) -> str:  # noqa: N802
         return self._current_table
+
+    @Property("QVariantList", notify=tableChanged)
+    def fields(self) -> list[dict[str, Any]]:
+        """The current table's fields: name, label, type. What the form is built from."""
+        return list(self._fields)
 
     @Property(int, notify=tableChanged)
     def shownRows(self) -> int:  # noqa: N802
@@ -297,10 +356,51 @@ class Bridge(QObject):
             return {"ok": False, "error": str(error)}
         self._rows.load(page)
         self._current_table = table
+        self._fields = [dict(field) for field in page["fields"]]
         self._shown = len(page["rows"])
         self._total = page["total"]
         self.tableChanged.emit()
         return {"ok": True, "shown": self._shown, "total": self._total}
+
+    # -- rows: add, change, delete ------------------------------------------
+    @Slot(int, "QVariantMap", result="QVariantMap")
+    def saveRow(self, row_id: int, values: dict) -> dict:  # noqa: N802
+        """Write one record from the form. `row_id` 0 means a new row."""
+        if self._storage is None or not self._current_table:
+            return {"ok": False, "error": "Pick a table first."}
+        clean = {name: _from_qml(value) for name, value in dict(values).items()}
+        try:
+            if int(row_id) > 0:
+                self._storage.update_row(self._current_table, int(row_id), clean)
+                saved = int(row_id)
+            else:
+                saved = int(self._storage.add_row(self._current_table, clean) or 0)
+        except (ValueError, TypeError) as error:
+            return {"ok": False, "error": _value_words(error, self._fields, clean)}
+        except OmarchyDBError as error:
+            return {"ok": False, "error": str(error)}
+        self._refresh_tables(select=self._current_table)
+        return {"ok": True, "rowId": saved, "rowIndex": self._rows.rowIndexOf(saved)}
+
+    @Slot(int, result="QVariantMap")
+    def deleteRow(self, row_id: int) -> dict:  # noqa: N802
+        if self._storage is None or not self._current_table:
+            return {"ok": False, "error": "Pick a table first."}
+        try:
+            gone = self._storage.delete_row(self._current_table, int(row_id))
+        except OmarchyDBError as error:
+            return {"ok": False, "error": str(error)}
+        self._refresh_tables(select=self._current_table)
+        if gone:
+            self.message.emit("Row deleted.")
+        return {"ok": bool(gone), "error": "" if gone else "That row was already gone."}
+
+    def _edit_cell(self, row_id: int, field: str, value: Any) -> bool:
+        """A cell typed into in the grid."""
+        result = self.saveRow(int(row_id), {field: value})
+        if not result["ok"]:
+            self.message.emit(result["error"])
+        return bool(result["ok"])
 
     @Slot()
     def refresh(self) -> None:
@@ -362,6 +462,29 @@ class Bridge(QObject):
             self._current_table = ""
             self._shown = self._total = 0
             self.tableChanged.emit()
+
+
+def _from_qml(value: Any) -> Any:
+    """QML hands strings and booleans; blanks mean "no value"."""
+    if isinstance(value, str) and value.strip() == "":
+        return None
+    return value
+
+
+def _value_words(error: Exception, fields: list[dict[str, Any]], values: dict[str, Any]) -> str:
+    """Say which field did not fit, in words, instead of a Python error."""
+    kinds = {"integer": "a whole number", "real": "a number", "date": "a date like 2024-01-31",
+             "boolean": "yes or no"}
+    for field in fields:
+        if field["name"] in values and values[field["name"]] is not None:
+            try:
+                from omarchy_db.fields import coerce
+
+                coerce(values[field["name"]], field["type"])
+            except (ValueError, TypeError):
+                want = kinds.get(field["type"], "words")
+                return f"{field['label']} needs {want}. \u201c{values[field['name']]}\u201d does not fit."
+    return str(error)
 
 
 def _parse_where(backend: str, where: str) -> dict[str, str]:

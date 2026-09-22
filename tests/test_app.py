@@ -263,3 +263,66 @@ def test_theme_follows_omarchy_theme_set_swapping_the_directory(app, tmp_path, m
     QTest.qWait(700)
     assert seen == ["#222222", "#333333"]
     assert str(current / "theme" / "colors.toml") in theme.watched()
+
+
+# -- editing rows -------------------------------------------------------------
+
+@pytest.fixture
+def pets(bridge, sandbox, pets_csv):
+    assert bridge.importIntoNew(str(pets_csv), str(sandbox / "pets.omadb"))["ok"] is True
+    return bridge
+
+
+def test_save_row_adds_and_updates(pets):
+    assert [f["name"] for f in pets.fields] == ["name", "age", "adopted_on", "is_good", "weight_kg"]
+    added = pets.saveRow(0, {"name": "Nova", "age": "3", "adopted_on": "2025-02-01", "is_good": True, "weight_kg": ""})
+    assert added["ok"] is True
+    assert added["rowId"] > 0
+    assert pets.totalRows == 5
+    assert added["rowIndex"] == 4
+    record = pets.rows.record(added["rowIndex"])
+    assert record["id"] == added["rowId"]
+    assert record["values"] == {"name": "Nova", "age": "3", "adopted_on": "2025-02-01", "is_good": True, "weight_kg": ""}
+
+    changed = pets.saveRow(added["rowId"], {"age": 4, "is_good": False})
+    assert changed["ok"] is True
+    assert pets.rows.record(4)["values"]["age"] == "4"
+    assert pets.rows.record(4)["values"]["is_good"] is False
+    assert pets.totalRows == 5
+
+
+def test_save_row_explains_a_value_that_does_not_fit(pets):
+    result = pets.saveRow(0, {"name": "Bad", "age": "three"})
+    assert result["ok"] is False
+    assert result["error"] == "age needs a whole number. “three” does not fit."
+    assert pets.totalRows == 4
+    result = pets.saveRow(pets.rows.rowId(0), {"adopted_on": "someday"})
+    assert result["ok"] is False
+    assert "needs a date" in result["error"]
+
+
+def test_delete_row(pets):
+    first = pets.rows.rowId(0)
+    assert pets.deleteRow(first)["ok"] is True
+    assert pets.totalRows == 3
+    assert pets.rows.rowIndexOf(first) == -1
+    again = pets.deleteRow(first)
+    assert again["ok"] is False
+    assert pets.totalRows == 3
+
+
+def test_grid_edit_goes_through_set_data(pets):
+    from PySide6.QtCore import Qt
+
+    model = pets.rows
+    assert model.flags(model.index(0, 0)) & Qt.ItemFlag.ItemIsEditable == Qt.ItemFlag(0)
+    assert model.flags(model.index(0, 1)) & Qt.ItemFlag.ItemIsEditable
+    assert model.setData(model.index(0, 1), "Rexy") is True
+    assert model.data(model.index(0, 1)) == "Rexy"
+    assert model.setData(model.index(0, 4), "no") is True
+    assert model.data(model.index(0, 4)) == "No"
+    heard = []
+    pets.message.connect(heard.append)
+    assert model.setData(model.index(0, 2), "lots") is False
+    assert heard and "whole number" in heard[0]
+    assert model.setData(model.index(0, 0), "7") is False
