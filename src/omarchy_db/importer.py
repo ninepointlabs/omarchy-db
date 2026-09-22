@@ -81,12 +81,119 @@ def _excel_text(value: Any) -> str:
     return str(value)
 
 
+#: How many leading rows to look at when hunting for the header row.
+HEADER_SEARCH_ROWS = 30
+
+
 def _load_book(path: Path):
+    """Open a workbook with the values Excel last saved.
+
+    Not read-only: read-only sheets do not expose their Excel Tables, and a
+    Table is the best possible clue to where the real headers are.
+    """
     openpyxl = _openpyxl()
     try:
-        return openpyxl.load_workbook(path, read_only=True, data_only=True)
+        return openpyxl.load_workbook(path, data_only=True)
     except Exception as exc:  # openpyxl raises many kinds
         raise ImportProblem(f"That does not look like an Excel file: {exc}") from exc
+
+
+def _largest_table(worksheet):
+    """The Excel Table covering the most cells, or None if the sheet has none."""
+    from openpyxl.utils import range_boundaries  # noqa: PLC0415
+
+    best = None
+    best_area = -1
+    for table in getattr(worksheet, "tables", {}).values():
+        try:
+            min_col, min_row, max_col, max_row = range_boundaries(table.ref)
+        except Exception:  # noqa: BLE001 - a malformed ref just means "no table"
+            continue
+        area = (max_col - min_col + 1) * (max_row - min_row + 1)
+        if area > best_area:
+            best, best_area = (table, (min_col, min_row, max_col, max_row)), area
+    return best
+
+
+def _header_row_index(grid: list[tuple]) -> int:
+    """Where the column names are: the widest of the first rows, never a lone title.
+
+    A titled sheet starts with "My List" in A1, maybe a subtitle, then blanks,
+    then the real headers across many columns. So look at the first
+    `HEADER_SEARCH_ROWS`, find the widest (most filled cells), and take the
+    first row that is at least half that wide and has two or more filled
+    cells. A lone title never qualifies; a header row with a blank cell or
+    two still does. Only if no row has two filled cells is a one-cell row
+    used, because then the sheet really is one column.
+    """
+    counts = [
+        sum(1 for cell in row if _excel_text(cell).strip())
+        for row in grid[:HEADER_SEARCH_ROWS]
+    ]
+    widest = max(counts, default=0)
+    if widest == 0:
+        raise ImportProblem("That sheet is empty.")
+    wide_enough = max(2, (widest + 1) // 2)
+    for index, count in enumerate(counts):
+        if count >= wide_enough:
+            return index
+    return next(index for index, count in enumerate(counts) if count > 0)
+
+
+def _sheet_region(worksheet) -> tuple[list[str], list[tuple]]:
+    """Headers and data rows for one sheet: from its Excel Table if it has one,
+    otherwise from the header row found by looking, with every column that
+    has a heading or data below it."""
+    table = _largest_table(worksheet)
+    if table is not None:
+        obj, (min_col, min_row, max_col, max_row) = table
+        header_rows = int(getattr(obj, "headerRowCount", 1) or 0)
+        cells = list(worksheet.iter_rows(
+            min_row=min_row, max_row=max_row, min_col=min_col, max_col=max_col, values_only=True
+        ))
+        if header_rows and cells:
+            headers = [_excel_text(cell).strip() for cell in cells[0]]
+            data = cells[header_rows:]
+        else:
+            headers = [str(name) for name in (obj.column_names or [])]
+            data = cells
+        headers = _fill_blank_headings(headers)
+        return headers, data
+
+    grid = list(worksheet.iter_rows(values_only=True))
+    if not grid:
+        raise ImportProblem("That sheet is empty.")
+    header_index = _header_row_index(grid)
+    header_row = grid[header_index]
+    data = grid[header_index + 1:]
+
+    # The table is as wide as the last column with a heading or with data below.
+    width = 0
+    for cell_index, cell in enumerate(header_row):
+        if _excel_text(cell).strip():
+            width = cell_index + 1
+    for row in data:
+        for cell_index in range(len(row) - 1, width - 1, -1):
+            if _excel_text(row[cell_index]).strip():
+                width = cell_index + 1
+                break
+    headers = [_excel_text(cell).strip() for cell in header_row[:width]]
+    headers += [""] * (width - len(headers))
+    return _fill_blank_headings(headers, trim=False), data
+
+
+def _fill_blank_headings(headers: list[str], *, trim: bool = True) -> list[str]:
+    """A column with data but no heading is called "Column 3", not dropped.
+
+    `trim` drops trailing blank headings (an Excel Table's own columns are
+    always named, so there it only tidies); the sheet scan has already sized
+    the table to the data, so it keeps them.
+    """
+    headers = list(headers)
+    if trim:
+        while headers and not headers[-1]:
+            headers.pop()
+    return [name or f"Column {index + 1}" for index, name in enumerate(headers)]
 
 
 def list_sheets(path: Path) -> list[str]:
@@ -105,6 +212,10 @@ def read_xlsx(
 ) -> tuple[list[str], list[list[str]]]:
     """Read one sheet of an Excel workbook into headings plus rows of plain text.
 
+    The headers are taken from the sheet's Excel Table when it has one (the
+    largest, if several), and otherwise from the widest of the first rows, so
+    a title sitting alone in A1 is never mistaken for the column names.
+
     `data_only=True` means a formula cell gives the value Excel last saved for
     it. Nothing is calculated here, and no macro is ever touched.
     """
@@ -117,22 +228,13 @@ def read_xlsx(
             worksheet = book[sheet]
         else:
             worksheet = book.worksheets[0]
-        rows_iter = worksheet.iter_rows(values_only=True)
-        headers: list[str] = []
-        for raw in rows_iter:
-            headers = [_excel_text(cell).strip() for cell in raw]
-            if any(headers):
-                break
-        else:
-            raise ImportProblem("That sheet is empty.")
-        # Drop trailing blank heading columns Excel likes to leave behind.
-        while headers and not headers[-1]:
-            headers.pop()
+        headers, data = _sheet_region(worksheet)
         if not headers:
-            raise ImportProblem("The first line of that sheet has no column names.")
+            raise ImportProblem("That sheet has no column names.")
         rows: list[list[str]] = []
-        for raw in rows_iter:
+        for raw in data:
             cells = [_excel_text(cell) for cell in raw[: len(headers)]]
+            cells += [""] * (len(headers) - len(cells))
             if not any(cell.strip() for cell in cells):
                 continue
             rows.append(cells)

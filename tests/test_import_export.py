@@ -191,3 +191,86 @@ def test_the_report_says_when_a_table_was_replaced(database, pets_csv: Path):
     assert first["replaced_existing"] is False
     second = import_spreadsheet(database, str(pets_csv), if_exists="replace")
     assert second["replaced_existing"] is True
+
+
+def _titled_workbook(path: Path, *, with_table: bool) -> None:
+    """A normal titled Excel list: title in A1, subtitle, two blank rows, then 15 headers."""
+    openpyxl = pytest.importorskip("openpyxl")
+    from openpyxl.worksheet.table import Table
+
+    headers = ["IDN", "First Name", "Middle / Nickname", "Last Name", "Mail Status", "Address Line 1",
+               "City", "State", "ZIP", "Home Phone", "Work Phone", "Cell Phone", "Email", "Record Type", "Notes"]
+    book = openpyxl.Workbook()
+    sheet = book.active
+    sheet.title = "Consolidated List"
+    sheet["A1"] = "Tyler Community Consolidated List"
+    sheet["A2"] = "32 records — updated this week"
+    sheet.append([])
+    sheet.append([])
+    sheet.append(headers)
+    sheet.append([190597, "Haleigh", "D", "Arent", "Good", "914 Joel Dr", "Tyler", "TX", "75703-4844", "308-532-6987", None, None, None, "Adult", "Dial number"])
+    sheet.append([255062, "Keondra", None, "Bailey", "Returned", "1603 Merrill", "Tyler", "TX", "75701", None, None, "817-902-2481", "k@example.com", "Adult", "Voicemail"])
+    sheet.append([300100, "Casey", "T", "Collier", "Good", "1 Main St", "Tyler", "TX", "75702", "903-617-0493", None, None, None, "Youth", None])
+    if with_table:
+        sheet.add_table(Table(displayName="ConsolidatedMembers", ref="A5:O8"))
+        # Junk outside the Table must not become part of the import.
+        sheet["A10"] = "Printed by"
+        sheet["B10"] = "Somebody"
+        sheet["A11"] = "Total"
+        sheet["B11"] = 3
+    book.save(path)
+
+
+def test_xlsx_title_rows_are_not_mistaken_for_headers(database, sandbox: Path):
+    _titled_workbook(sandbox / "titled.xlsx", with_table=False)
+    plan = plan_import(str(sandbox / "titled.xlsx"))
+    labels = [f["label"] for f in plan["fields"]]
+    assert len(labels) == 15
+    assert labels[:4] == ["IDN", "First Name", "Middle / Nickname", "Last Name"]
+    assert labels[-1] == "Notes"
+    assert "Tyler Community Consolidated List" not in labels
+    result = import_spreadsheet(database, str(sandbox / "titled.xlsx"))
+    assert result["rows_added"] == 3
+    rows = database.list_rows("titled")["rows"]
+    assert rows[0][2] == "Haleigh"
+    assert rows[1][13] == "k@example.com"
+
+
+def test_xlsx_prefers_the_excel_table_and_ignores_cells_outside_it(database, sandbox: Path):
+    _titled_workbook(sandbox / "tabled.xlsx", with_table=True)
+    plan = plan_import(str(sandbox / "tabled.xlsx"))
+    assert len(plan["fields"]) == 15
+    assert plan["fields"][1]["label"] == "First Name"
+    result = import_spreadsheet(database, str(sandbox / "tabled.xlsx"))
+    assert result["rows_added"] == 3  # not the "Printed by" / "Total" rows below the Table
+    names = [row[2] for row in database.list_rows("tabled")["rows"]]
+    assert names == ["Haleigh", "Keondra", "Casey"]
+
+
+def test_xlsx_one_column_sheet_still_imports(database, sandbox: Path):
+    openpyxl = pytest.importorskip("openpyxl")
+    book = openpyxl.Workbook()
+    sheet = book.active
+    sheet.append(["Name"])
+    sheet.append(["Ann"])
+    sheet.append(["Bob"])
+    book.save(sandbox / "one.xlsx")
+    plan = plan_import(str(sandbox / "one.xlsx"))
+    assert [f["label"] for f in plan["fields"]] == ["Name"]
+    assert import_spreadsheet(database, str(sandbox / "one.xlsx"))["rows_added"] == 2
+
+
+def test_xlsx_columns_with_data_but_no_heading_are_kept(database, sandbox: Path):
+    openpyxl = pytest.importorskip("openpyxl")
+    book = openpyxl.Workbook()
+    sheet = book.active
+    sheet.append(["Name", None, "Age"])
+    sheet.append(["Ann", "left-handed", 31])
+    sheet.append(["Bob", None, 45, "spills into a fourth column"])
+    book.save(sandbox / "gaps.xlsx")
+    plan = plan_import(str(sandbox / "gaps.xlsx"))
+    assert [f["label"] for f in plan["fields"]] == ["Name", "Column 2", "Age", "Column 4"]
+    import_spreadsheet(database, str(sandbox / "gaps.xlsx"))
+    rows = database.list_rows("gaps")["rows"]
+    assert rows[0][1:] == ["Ann", "left-handed", 31, None]
+    assert rows[1][4] == "spills into a fourth column"

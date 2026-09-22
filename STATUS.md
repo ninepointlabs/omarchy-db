@@ -1,6 +1,39 @@
 # Omarchy-DB — status
 
-**Phase B (forms, Excel, reports, printing). Last updated 2026-09-21.**
+**Phase B (forms, Excel, reports, printing). Last updated 2026-09-22.**
+
+## Fix 2026-09-22 — Excel import of a titled sheet collapsed to one column
+
+Tim imported `Tyler_Community_Consolidated_List_1.1.xlsx` and got a single
+field. The reader took the first non-blank row as the headers; on a normal
+titled sheet that row is the title alone in A1, so every later row was cut
+to one column. Now `read_xlsx`:
+
+1. **Prefers the sheet's Excel Table** when it has one (the largest, if
+   several): headers and data come from the Table's range, and cells outside
+   it (footers, totals) are ignored. This needs the workbook opened
+   normally rather than read-only, because read-only sheets do not expose
+   their Tables.
+2. **Otherwise finds the header row by looking**: among the first 30 rows,
+   the first row at least half as wide as the widest and with two or more
+   filled cells. A lone title never qualifies; a header row with a blank
+   cell still does. The table is as wide as the last column with a heading
+   or with data below it, and a column with data but no heading is called
+   "Column 3" rather than dropped. A genuinely one-column sheet still works.
+
+Verified on Tim's file: all three sheets — "Consolidated List" (Excel Table
+`ConsolidatedMembers` A5:O30, 15 fields, 25 rows), "Clean_List_For_Print"
+(Table, 9 fields, 32 rows) and "No Longer in the Area" (no Table; title,
+subtitle, two blank rows, headers on row 5; 15 fields, 8 rows) — plan and
+import with the real headers (IDN, First Name, Middle / Nickname, Last Name,
+Mail Status, Address Line 1, City, State, ZIP, Home Phone, Work Phone, Cell
+Phone, Email, Record Type, Notes), through the CLI and through the app's
+wizard path (bridge `planImport` / `importPlanned` on the worker thread).
+Four new tests build workbooks of these shapes; 127 tests pass.
+
+Worth knowing: on the sheet without dashes in its ZIP codes the type guesser
+calls ZIP a whole number, which the wizard lets you change to words before
+importing. That is the guesser's normal behaviour, not part of this bug.
 
 Phase B is complete on this machine, in the order Tim asked for: B0 (live
 theme follow) first, then the form view and grid editing, then Excel import
@@ -80,7 +113,8 @@ unit test performs the same rm-rf-then-rename twice.
 
 ## Verified
 
-- `python -m pytest` — **123 passed** (101 after A2, plus theme swap, editing,
+- `python -m pytest` — **127 passed** (123 after Phase B plus the four Excel
+  header tests; the 123 were 101 after A2, plus theme swap, editing,
   import worker, export, report bridge, xlsx round trip, sheet choice, saved
   formula values, column fitting, pagination, PDF bytes, printer path,
   preview orientation, forms and reports kept in the database, and the new
