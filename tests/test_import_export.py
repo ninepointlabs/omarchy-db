@@ -87,11 +87,64 @@ def test_empty_file_is_reported_kindly(database, sandbox: Path):
         import_spreadsheet(database, str(sheet))
 
 
-def test_excel_says_it_is_not_ready_yet(database, sandbox: Path):
+def test_a_broken_excel_file_is_refused_in_words(database, sandbox: Path):
+    pytest.importorskip("openpyxl")
     sheet = sandbox / "book.xlsx"
     sheet.write_bytes(b"PK\x03\x04not really a workbook")
     with pytest.raises(ImportProblem, match="Excel"):
         import_spreadsheet(database, str(sheet))
+
+
+def test_old_xls_is_refused_with_advice(database, sandbox: Path):
+    sheet = sandbox / "book.xls"
+    sheet.write_bytes(b"\xd0\xcf\x11\xe0 old excel")
+    with pytest.raises(ImportProblem, match="save it as .xlsx"):
+        import_spreadsheet(database, str(sheet))
+
+
+def test_xlsx_round_trip_keeps_types(database, pets_csv: Path, sandbox: Path):
+    pytest.importorskip("openpyxl")
+    import_spreadsheet(database, str(pets_csv))
+    out = export_table(database, "pets", str(sandbox / "pets.xlsx"), file_format="xlsx")
+    assert out["format"] == "xlsx"
+    assert out["rows_written"] == 4
+    assert (sandbox / "pets.xlsx").exists()
+
+    plan = plan_import(str(sandbox / "pets.xlsx"))
+    assert plan["sheets"] == ["pets"]
+    assert plan["sheet"] == "pets"
+    assert [f["type"] for f in plan["fields"]] == ["text", "integer", "date", "boolean", "real"]
+
+    back = import_spreadsheet(database, str(sandbox / "pets.xlsx"), table="pets_again")
+    assert back["rows_added"] == 4
+    rows = database.list_rows("pets_again")["rows"]
+    assert rows[0][1:] == ["Rex", 4, "2021-03-14", True, 12.5]
+
+
+def test_xlsx_import_picks_a_sheet_and_reads_saved_formula_values(database, sandbox: Path):
+    openpyxl = pytest.importorskip("openpyxl")
+    book = openpyxl.Workbook()
+    first = book.active
+    first.title = "People"
+    first.append(["Name", "Age"])
+    first.append(["Ann", 31])
+    second = book.create_sheet("Totals")
+    second.append(["Item", "Price", "Doubled"])
+    second.append(["Pen", 1.5, "=B2*2"])
+    book.save(sandbox / "two.xlsx")
+
+    plan = plan_import(str(sandbox / "two.xlsx"))
+    assert plan["sheets"] == ["People", "Totals"]
+    assert plan["table"] == "people"
+    result = import_spreadsheet(database, str(sandbox / "two.xlsx"), sheet="Totals")
+    assert result["table"] == "totals"
+    # openpyxl wrote no cached value for the formula, so the cell is blank —
+    # the formula itself is never worked out by Omarchy-DB.
+    rows = database.list_rows("totals")["rows"]
+    assert rows[0][1:3] == ["Pen", 1.5]
+    assert rows[0][3] is None
+    with pytest.raises(ImportProblem, match="no sheet called"):
+        import_spreadsheet(database, str(sandbox / "two.xlsx"), sheet="Nope")
 
 
 def test_import_refuses_a_file_outside_the_approved_roots(database):
@@ -127,11 +180,10 @@ def test_export_refuses_a_path_outside_the_roots(database, pets_csv: Path):
         export_table(database, "pets", "/etc/omarchy-db-escape.csv")
 
 
-def test_xlsx_and_pdf_export_say_they_are_coming(database, pets_csv: Path, sandbox: Path):
+def test_unknown_export_format_is_refused(database, pets_csv: Path, sandbox: Path):
     import_spreadsheet(database, str(pets_csv))
-    for kind in ("xlsx", "pdf"):
-        with pytest.raises(OmarchyDBError, match="not built yet"):
-            export_table(database, "pets", str(sandbox / f"out.{kind}"), file_format=kind)
+    with pytest.raises(OmarchyDBError, match="cannot write"):
+        export_table(database, "pets", str(sandbox / "out.doc"), file_format="doc")
 
 
 def test_the_report_says_when_a_table_was_replaced(database, pets_csv: Path):

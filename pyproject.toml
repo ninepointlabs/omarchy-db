@@ -26,9 +26,10 @@ dependencies = []
 # The window. PySide6 is best installed from Arch (`pyside6`, which pulls in
 # qt6-declarative); it is listed here so the requirement is written down.
 app = ["PySide6>=6.6"]
+xlsx = ["openpyxl>=3.1"]
 postgres = ["psycopg[binary]>=3.1"]
 mysql = ["PyMySQL>=1.1"]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "openpyxl>=3.1"]
 
 [project.scripts]
 omarchy-db = "omarchy_db.cli:main"

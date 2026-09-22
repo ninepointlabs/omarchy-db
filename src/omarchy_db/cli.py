@@ -19,6 +19,7 @@ from . import catalog
 from .errors import OmarchyDBError
 from .exporter import export_table
 from .importer import import_spreadsheet, plan_import
+from .reports import export_report
 from .storage import BACKENDS, create_database, open_database
 
 
@@ -56,6 +57,7 @@ def cmd_import(args: argparse.Namespace) -> int:
             args.file,
             table=args.table,
             if_exists="replace" if args.replace else "error",
+            sheet=args.sheet,
         )
         _remember(storage)
     print(f"Added {result['rows_added']} rows to the table {result['table']!r}.")
@@ -69,7 +71,26 @@ def cmd_import(args: argparse.Namespace) -> int:
 
 
 def cmd_plan(args: argparse.Namespace) -> int:
-    print(json.dumps(plan_import(args.file), indent=2))
+    print(json.dumps(plan_import(args.file, sheet=args.sheet), indent=2))
+    return 0
+
+
+def cmd_report(args: argparse.Namespace) -> int:
+    with open_database(backend="sqlite", path=args.path) as storage:
+        result = export_report(
+            storage,
+            {
+                "table": args.table,
+                "title": args.title,
+                "columns": args.columns.split(",") if args.columns else None,
+                "page_size": args.page,
+                "orientation": "landscape" if args.landscape else "portrait",
+                "fit_to_width": not args.no_fit,
+            },
+            args.out,
+            overwrite=args.overwrite,
+        )
+    print(f"Wrote {result['rows_written']} rows on {result['pages']} page(s) to {result['file']}")
     return 0
 
 
@@ -133,12 +154,26 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("path")
     sub.add_argument("file")
     sub.add_argument("--table")
+    sub.add_argument("--sheet", help="Excel only: which sheet (default: the first)")
     sub.add_argument("--replace", action="store_true", help="Replace a table of the same name")
     sub.set_defaults(func=cmd_import)
 
     sub = subs.add_parser("plan", help="Show what a spreadsheet would become")
     sub.add_argument("file")
+    sub.add_argument("--sheet")
     sub.set_defaults(func=cmd_plan)
+
+    sub = subs.add_parser("report", help="Print a table to a tidy, fitted PDF")
+    sub.add_argument("path")
+    sub.add_argument("table")
+    sub.add_argument("out")
+    sub.add_argument("--title")
+    sub.add_argument("--columns", help="Comma-separated field names, in order")
+    sub.add_argument("--page", default="letter", choices=["letter", "a4", "legal"])
+    sub.add_argument("--landscape", action="store_true")
+    sub.add_argument("--no-fit", action="store_true", help="Keep natural column widths")
+    sub.add_argument("--overwrite", action="store_true")
+    sub.set_defaults(func=cmd_report)
 
     sub = subs.add_parser("tables", help="List the tables in a database")
     sub.add_argument("path")
@@ -152,11 +187,11 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--json", action="store_true")
     sub.set_defaults(func=cmd_rows)
 
-    sub = subs.add_parser("export", help="Write a table out as a CSV file")
+    sub = subs.add_parser("export", help="Write a table out as CSV, Excel or PDF")
     sub.add_argument("path")
     sub.add_argument("table")
     sub.add_argument("out")
-    sub.add_argument("--format", default="csv")
+    sub.add_argument("--format", default="csv", choices=["csv", "xlsx", "pdf"])
     sub.add_argument("--overwrite", action="store_true")
     sub.set_defaults(func=cmd_export)
 

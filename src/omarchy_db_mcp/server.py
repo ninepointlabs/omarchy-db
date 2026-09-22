@@ -2,7 +2,8 @@
 
 Agents (Claude Code, and anything else that speaks MCP) attach to this over
 stdio and get the same jobs the app does: make a database, import a
-spreadsheet, list tables, read rows, write a CSV.
+spreadsheet (CSV or Excel), list tables, read and change rows, keep a form
+and a report, and write CSV, Excel or PDF.
 
 It speaks MCP's JSON-RPC 2.0 framing directly over stdin/stdout, with no
 third-party SDK, so the only thing needed to run it is Python.
@@ -11,8 +12,9 @@ Safety rules, enforced here and in `omarchy_db.paths`:
 
 - Every file path is resolved and must land inside an approved root
   (the user's home by default, or `OMARCHY_DB_ROOTS`). Traversal is refused.
-- Spreadsheet cells are read as data. A formula is stored as its own text
-  and never worked out or run.
+- Spreadsheet cells are read as data. In a CSV a formula is stored as its own
+  text; in an Excel file the value Excel last saved is used. Nothing is ever
+  worked out or run.
 - Anything that would replace a file or a table says so in its result, and
   will not do it unless asked with `overwrite` / `if_exists`.
 """
@@ -28,6 +30,15 @@ from omarchy_db.errors import OmarchyDBError
 from omarchy_db.exporter import export_table
 from omarchy_db.fields import FIELD_TYPES
 from omarchy_db.importer import import_spreadsheet, plan_import
+from omarchy_db.reports import (
+    delete_report,
+    export_report,
+    form_for,
+    list_reports,
+    load_report,
+    save_form,
+    save_report,
+)
 from omarchy_db.storage import BACKENDS, Storage, create_database, open_database
 
 PROTOCOL_VERSION = "2024-11-05"
@@ -117,7 +128,7 @@ def tool_open_database(arguments: dict[str, Any]) -> dict[str, Any]:
 
 
 def tool_plan_import(arguments: dict[str, Any]) -> dict[str, Any]:
-    return plan_import(arguments["file"])
+    return plan_import(arguments["file"], sheet=arguments.get("sheet"))
 
 
 def tool_import_spreadsheet(arguments: dict[str, Any]) -> dict[str, Any]:
@@ -130,6 +141,7 @@ def tool_import_spreadsheet(arguments: dict[str, Any]) -> dict[str, Any]:
             arguments["file"],
             table=arguments.get("table"),
             if_exists=if_exists,
+            sheet=arguments.get("sheet"),
         )
         _remember(storage)
     if if_exists == "replace":
@@ -173,6 +185,78 @@ def tool_add_row(arguments: dict[str, Any]) -> dict[str, Any]:
     with _open(arguments) as storage:
         row_id = storage.add_row(arguments["table"], dict(arguments.get("values") or {}))
     return {"added": True, "table": arguments["table"], "id": row_id}
+
+
+def tool_update_row(arguments: dict[str, Any]) -> dict[str, Any]:
+    with _open(arguments) as storage:
+        changed = storage.update_row(
+            arguments["table"], int(arguments["id"]), dict(arguments.get("values") or {})
+        )
+    return {"updated": bool(changed), "table": arguments["table"], "id": int(arguments["id"]),
+            "note": "" if changed else "No row has that id."}
+
+
+def tool_delete_row(arguments: dict[str, Any]) -> dict[str, Any]:
+    with _open(arguments) as storage:
+        gone = storage.delete_row(arguments["table"], int(arguments["id"]))
+    return {"deleted": bool(gone), "table": arguments["table"], "id": int(arguments["id"]),
+            "note": "" if gone else "No row has that id."}
+
+
+def tool_create_form(arguments: dict[str, Any]) -> dict[str, Any]:
+    with _open(arguments) as storage:
+        form = save_form(
+            storage,
+            arguments["table"],
+            {"title": arguments.get("title"), "fields": arguments.get("fields"),
+             "labels": arguments.get("labels")},
+        )
+    return {"saved": True, "form": form}
+
+
+def tool_get_form(arguments: dict[str, Any]) -> dict[str, Any]:
+    with _open(arguments) as storage:
+        return form_for(storage, arguments["table"])
+
+
+def _report_spec(arguments: dict[str, Any]) -> dict[str, Any]:
+    keys = ("name", "table", "title", "columns", "page_size", "orientation", "margins_mm",
+            "fit_to_width", "font_pt", "show_row_numbers")
+    return {key: arguments[key] for key in keys if key in arguments}
+
+
+def tool_create_report(arguments: dict[str, Any]) -> dict[str, Any]:
+    with _open(arguments) as storage:
+        spec = save_report(storage, _report_spec(arguments))
+    return {"saved": True, "report": spec}
+
+
+def tool_list_reports(arguments: dict[str, Any]) -> dict[str, Any]:
+    with _open(arguments) as storage:
+        return {"reports": list_reports(storage)}
+
+
+def tool_delete_report(arguments: dict[str, Any]) -> dict[str, Any]:
+    with _open(arguments) as storage:
+        gone = delete_report(storage, arguments["name"])
+    return {"deleted": bool(gone), "name": arguments["name"]}
+
+
+def tool_export_report(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Write a PDF from a saved report (by name) or from a spec given right here."""
+    with _open(arguments) as storage:
+        spec = _report_spec(arguments)
+        if arguments.get("name") and not arguments.get("table"):
+            saved = load_report(storage, arguments["name"])
+            if saved is None:
+                raise OmarchyDBError(f"There is no report called {arguments['name']!r}.")
+            spec = {**saved, **{k: v for k, v in spec.items() if k != "name"}}
+        result = export_report(
+            storage, spec, arguments["file"], overwrite=bool(arguments.get("overwrite", False))
+        )
+    if result["replaced_existing_file"]:
+        result["note"] = "A file was already there and has been replaced."
+    return result
 
 
 def tool_export_table(arguments: dict[str, Any]) -> dict[str, Any]:
@@ -273,21 +357,23 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "import_spreadsheet",
         "description": (
-            "Read a CSV file into a new table, guessing each field's type "
-            "(text, integer, real, date, boolean). Excel .xlsx is not read yet."
+            "Read a CSV or Excel (.xlsx) file into a new table, guessing each field's type "
+            "(text, integer, real, date, boolean). One sheet per call; plan_import lists the sheets."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 **_TARGET_PROPERTIES,
-                "file": {"type": "string", "description": "The CSV file to read."},
-                "table": {"type": "string", "description": "Table name. Defaults to the file name."},
+                "file": {"type": "string", "description": "The CSV or .xlsx file to read."},
+                "sheet": {"type": "string", "description": "Excel only: which sheet. Defaults to the first."},
+                "table": {"type": "string", "description": "Table name. Defaults to the file (or sheet) name."},
                 "if_exists": {
                     "type": "string",
                     "enum": ["error", "skip", "replace"],
                     "default": "error",
                     "description": "'replace' drops a table of that name first, losing its rows.",
                 },
+                "sheet": {"type": "string", "description": "Excel only: which sheet to look at."},
             },
             "required": ["file"],
             "additionalProperties": False,
@@ -351,8 +437,8 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "export_table",
         "description": (
-            "Write a whole table out to a CSV file. Says in its result whether a file was "
-            "replaced. xlsx and pdf are not written yet."
+            "Write a whole table out as CSV, Excel (.xlsx) or a fitted PDF list. Says in its "
+            "result whether a file was replaced. For a PDF with chosen columns or a title, use export_report."
         ),
         "inputSchema": {
             "type": "object",
@@ -360,7 +446,7 @@ TOOLS: list[dict[str, Any]] = [
                 **_TARGET_PROPERTIES,
                 "table": {"type": "string"},
                 "file": {"type": "string", "description": "Where to write it."},
-                "format": {"type": "string", "enum": ["csv"], "default": "csv"},
+                "format": {"type": "string", "enum": ["csv", "xlsx", "pdf"], "default": "csv"},
                 "overwrite": {"type": "boolean", "default": False},
                 "include_id": {"type": "boolean", "default": False},
             },
@@ -368,6 +454,143 @@ TOOLS: list[dict[str, Any]] = [
             "additionalProperties": False,
         },
         "handler": tool_export_table,
+    },
+    {
+        "name": "update_row",
+        "description": "Change some fields of one row, found by its id.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                **_TARGET_PROPERTIES,
+                "table": {"type": "string"},
+                "id": {"type": "integer"},
+                "values": {"type": "object", "description": "Field name to new value."},
+            },
+            "required": ["table", "id", "values"],
+            "additionalProperties": False,
+        },
+        "handler": tool_update_row,
+    },
+    {
+        "name": "delete_row",
+        "description": "Delete one row, found by its id. This cannot be undone.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                **_TARGET_PROPERTIES,
+                "table": {"type": "string"},
+                "id": {"type": "integer"},
+            },
+            "required": ["table", "id"],
+            "additionalProperties": False,
+        },
+        "handler": tool_delete_row,
+    },
+    {
+        "name": "create_form",
+        "description": (
+            "Keep a simple form for a table: which fields, in what order, with what labels. "
+            "The app's form view uses it. Fields left out still show, after the chosen ones."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                **_TARGET_PROPERTIES,
+                "table": {"type": "string"},
+                "title": {"type": "string"},
+                "fields": {"type": "array", "items": {"type": "string"}, "description": "Field names in order."},
+                "labels": {"type": "object", "description": "Field name to the label people see."},
+            },
+            "required": ["table"],
+            "additionalProperties": False,
+        },
+        "handler": tool_create_form,
+    },
+    {
+        "name": "get_form",
+        "description": "The form for a table: the saved one, or the plain default.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {**_TARGET_PROPERTIES, "table": {"type": "string"}},
+            "required": ["table"],
+            "additionalProperties": False,
+        },
+        "handler": tool_get_form,
+    },
+    {
+        "name": "create_report",
+        "description": (
+            "Keep a printable report: a table, its columns, a title, page size and orientation. "
+            "Columns shrink and wrap to fit the page width. Export it with export_report."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                **_TARGET_PROPERTIES,
+                "name": {"type": "string", "description": "What to call the report. Defaults to the title."},
+                "table": {"type": "string"},
+                "title": {"type": "string", "description": "Printed at the top of page one."},
+                "columns": {"type": "array", "items": {"type": "string"}, "description": "Field names, in order. Default: all."},
+                "page_size": {"type": "string", "enum": ["letter", "a4", "legal"], "default": "letter"},
+                "orientation": {"type": "string", "enum": ["portrait", "landscape"], "default": "portrait"},
+                "margins_mm": {"type": "number", "default": 15},
+                "fit_to_width": {"type": "boolean", "default": True, "description": "Shrink and wrap columns so the table fits the page width."},
+                "font_pt": {"type": "number", "default": 10},
+                "show_row_numbers": {"type": "boolean", "default": False},
+            },
+            "required": ["table"],
+            "additionalProperties": False,
+        },
+        "handler": tool_create_report,
+    },
+    {
+        "name": "list_reports",
+        "description": "The reports kept in a database.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {**_TARGET_PROPERTIES},
+            "additionalProperties": False,
+        },
+        "handler": tool_list_reports,
+    },
+    {
+        "name": "delete_report",
+        "description": "Forget a kept report. The table and its rows are untouched.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {**_TARGET_PROPERTIES, "name": {"type": "string"}},
+            "required": ["name"],
+            "additionalProperties": False,
+        },
+        "handler": tool_delete_report,
+    },
+    {
+        "name": "export_report",
+        "description": (
+            "Write a report as a PDF. Give a kept report's name, or a table plus any of the "
+            "report settings right here. Says in its result whether a file was replaced."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                **_TARGET_PROPERTIES,
+                "file": {"type": "string", "description": "Where to write the PDF."},
+                "name": {"type": "string", "description": "A kept report to use."},
+                "table": {"type": "string", "description": "Or: the table to report on."},
+                "title": {"type": "string", "description": "Printed at the top of page one."},
+                "columns": {"type": "array", "items": {"type": "string"}, "description": "Field names, in order. Default: all."},
+                "page_size": {"type": "string", "enum": ["letter", "a4", "legal"], "default": "letter"},
+                "orientation": {"type": "string", "enum": ["portrait", "landscape"], "default": "portrait"},
+                "margins_mm": {"type": "number", "default": 15},
+                "fit_to_width": {"type": "boolean", "default": True, "description": "Shrink and wrap columns so the table fits the page width."},
+                "font_pt": {"type": "number", "default": 10},
+                "show_row_numbers": {"type": "boolean", "default": False},
+                "overwrite": {"type": "boolean", "default": False},
+            },
+            "required": ["file"],
+            "additionalProperties": False,
+        },
+        "handler": tool_export_report,
     },
 ]
 

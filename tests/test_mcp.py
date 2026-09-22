@@ -171,3 +171,39 @@ def _env(sandbox: Path) -> dict:
     env["OMARCHY_DB_ROOTS"] = str(sandbox)
     env["XDG_STATE_HOME"] = str(sandbox / "state")
     return env
+
+
+def test_row_form_and_report_tools(sandbox, pets_csv):
+    pytest.importorskip("PySide6")
+    from omarchy_db_mcp.server import HANDLERS
+
+    db = str(sandbox / "mcp.omadb")
+    HANDLERS["create_database"]({"title": "Pets", "path": db})
+    HANDLERS["import_spreadsheet"]({"path": db, "file": str(pets_csv)})
+    rows = HANDLERS["list_rows"]({"path": db, "table": "pets"})
+    first = rows["rows"][0][0]
+
+    changed = HANDLERS["update_row"]({"path": db, "table": "pets", "id": first, "values": {"age": 5}})
+    assert changed["updated"] is True
+    assert HANDLERS["list_rows"]({"path": db, "table": "pets"})["rows"][0][2] == 5
+
+    gone = HANDLERS["delete_row"]({"path": db, "table": "pets", "id": first})
+    assert gone["deleted"] is True
+    assert HANDLERS["delete_row"]({"path": db, "table": "pets", "id": first})["deleted"] is False
+    assert HANDLERS["list_rows"]({"path": db, "table": "pets"})["total"] == 3
+
+    form = HANDLERS["create_form"]({"path": db, "table": "pets", "fields": ["name", "is_good"], "labels": {"is_good": "Good?"}})
+    assert form["form"]["labels"]["is_good"] == "Good?"
+    assert HANDLERS["get_form"]({"path": db, "table": "pets"})["fields"][:2] == ["name", "is_good"]
+
+    kept = HANDLERS["create_report"]({"path": db, "name": "Names", "table": "pets", "columns": ["name"], "orientation": "landscape"})
+    assert kept["report"]["orientation"] == "landscape"
+    assert [r["name"] for r in HANDLERS["list_reports"]({"path": db})["reports"]] == ["Names"]
+
+    out = HANDLERS["export_report"]({"path": db, "name": "Names", "file": str(sandbox / "names.pdf")})
+    assert out["pages"] == 1
+    assert out["file"].endswith("names.pdf")
+    direct = HANDLERS["export_report"]({"path": db, "table": "pets", "title": "Quick", "file": str(sandbox / "quick.pdf")})
+    assert direct["title"] == "Quick"
+    assert HANDLERS["export_table"]({"path": db, "table": "pets", "file": str(sandbox / "t.pdf"), "format": "pdf"})["format"] == "pdf"
+    assert HANDLERS["delete_report"]({"path": db, "name": "Names"})["deleted"] is True
