@@ -31,6 +31,13 @@ Phone, Email, Record Type, Notes), through the CLI and through the app's
 wizard path (bridge `planImport` / `importPlanned` on the worker thread).
 Four new tests build workbooks of these shapes; 127 tests pass.
 
+A note for whoever writes the next worker-thread test: waiting on the import
+with a tight `QTest.qWait` loop makes the worker about a hundred times
+slower (the loop keeps taking the GIL back from the CPU-bound openpyxl
+parse). With the real event loop running (`app.exec()`) the same import of
+Tim's sheet finishes in 0.18 s. Poll with a longer wait, or quit the event
+loop from the `importFinished` signal, as the verification here did.
+
 Worth knowing: on the sheet without dashes in its ZIP codes the type guesser
 calls ZIP a whole number, which the wizard lets you change to words before
 importing. That is the guesser's normal behaviour, not part of this bug.
