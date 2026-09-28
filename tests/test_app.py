@@ -784,3 +784,33 @@ def test_the_filter_bar_starts_fresh_on_another_table(app, bridge, sandbox):
     finally:
         engine.deleteLater()
         app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+def test_the_views_menu_is_wide_enough_for_its_rows(app, bridge, sandbox, pets_csv):
+    from PySide6.QtCore import QEvent
+    from PySide6.QtQml import QQmlEngine, QQmlExpression
+
+    engine, window, _ = _load_window(app, bridge)
+    window.setProperty("width", 1080)
+    assert bridge.importIntoNew(str(pets_csv), str(sandbox / "menu.omadb"))["ok"] is True
+    assert bridge.setFilter("name", "contains", "i")["ok"] is True
+    assert bridge.saveView("A view with quite a long name to widen the menu", False, False)["ok"] is True
+    try:
+        app.processEvents()
+        button = window.findChild(QObject, "viewsButton")
+        menu = window.findChild(QObject, "viewsMenu")
+
+        def ask(code):  # evaluated where viewsMenu is in scope
+            return QQmlExpression(QQmlEngine.contextForObject(button), button, code).evaluate()[0]
+
+        ask("viewsMenu.open()")
+        app.processEvents()
+        assert menu.property("visible") is True
+        # Its right edge stays inside the window, and the saved view's row is not cut short.
+        assert ask("viewsMenu.contentItem.mapToItem(null, viewsMenu.width, 0).x") <= window.property("width") + 1
+        row = ("(function(){ for (let i = 0; i < viewsMenu.count; i++) { const it = viewsMenu.itemAt(i);"
+               " if (it && String(it.text).startsWith('A view with')) return it } })()")
+        assert ask(f"{row}.contentItem.implicitWidth <= {row}.availableWidth + 1") is True
+    finally:
+        engine.deleteLater()
+        app.sendPostedEvents(None, QEvent.Type.DeferredDelete)

@@ -314,6 +314,7 @@ Page {
                         onClicked: moreMenu.open()
                         Menu {
                             id: moreMenu
+                            x: parent.width - width     // at the right edge: open leftwards
                             y: parent.height
                             MenuItem { text: "Add field\u2026"; objectName: "menuAddField"; onTriggered: addFieldDialog.openFor(false) }
                             MenuItem { text: "Fields: add, rename or delete\u2026"; onTriggered: fieldsDialog.openFor() }

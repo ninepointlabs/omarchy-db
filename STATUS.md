@@ -19,11 +19,15 @@ Found while taking new preview screenshots with a bigger demo database.
 - **The filter bar kept the last table's rule.** Moving to a table with no
   rule starts the bar fresh.
 
+- **The Views… menu cut its rows short.** It now opens leftwards from its
+  button at the right edge and widens to fit "Name · rule" (up to 640 px).
+  The More… menu opens leftwards too.
+
 Not a bug, noted for anyone scripting the window: without `app.exec()`,
 `processEvents()` never runs `deleteLater()`, so old grid cells stay on
 screen after a model reset. Send `QEvent.DeferredDelete` by hand.
 
-165 tests pass.
+166 tests pass.
 
 ## Fix 2026-09-22 — "It looks like we cannot add fields"
 

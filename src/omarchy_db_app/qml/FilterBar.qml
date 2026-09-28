@@ -86,7 +86,20 @@ RowLayout {
         onClicked: viewsMenu.open()
         Menu {
             id: viewsMenu
+            objectName: "viewsMenu"
+            // The button sits at the right edge: open leftwards, wide enough for "Name · rule".
+            x: parent.width - width
             y: parent.height
+            onAboutToShow: {
+                let w = 240
+                for (let i = 0; i < count; i++) {
+                    const item = itemAt(i)
+                    // A menu item's own implicitWidth follows the menu; its label knows the text width.
+                    if (item && item.visible && item.contentItem)
+                        w = Math.max(w, item.contentItem.implicitWidth + item.leftPadding + item.rightPadding)
+                }
+                width = Math.min(w + leftPadding + rightPadding, 640)
+            }
             MenuItem {
                 visible: Bridge.views.length === 0
                 height: visible ? implicitHeight : 0
