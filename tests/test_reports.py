@@ -148,3 +148,13 @@ def test_the_printer_path_paints_the_same_pages(database, pets_csv: Path, sandbo
     preview = document.preview_image(0, 300)
     assert preview.width() == 300
     assert preview.width() > preview.height()  # landscape
+
+
+def test_cell_text_drops_the_trailing_point_zero_on_whole_numbers():
+    from omarchy_db.reports import cell_text
+
+    assert cell_text(3350.0, "real") == "3350"
+    assert cell_text(42.5, "real") == "42.5"
+    assert cell_text(7, "integer") == "7"
+    assert cell_text(True, "boolean") == "Yes"
+    assert cell_text(None, "real") == ""

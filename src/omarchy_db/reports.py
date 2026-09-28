@@ -109,10 +109,13 @@ def fetch_rows(storage: Storage, spec: dict[str, Any]) -> list[list[str]]:
 
 
 def cell_text(value: Any, kind: str | None) -> str:
+    """How a value reads on screen and on paper: a whole number without a trailing ".0"."""
     if value is None:
         return ""
     if kind == "boolean":
         return "Yes" if value else "No"
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
     return str(value)
 
 

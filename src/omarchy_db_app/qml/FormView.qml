@@ -129,6 +129,8 @@ Item {
                                 elide: Text.ElideRight
                             }
                             CheckBox {
+                                // Fill the row so the box lines up with the text fields, not mid-row.
+                                Layout.fillWidth: true
                                 visible: cell.modelData.type === "boolean"
                                 checked: visible && form.edits[cell.modelData.name] === true
                                 text: checked ? "Yes" : "No"

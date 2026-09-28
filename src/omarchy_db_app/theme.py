@@ -22,7 +22,7 @@ import os
 import tomllib
 from pathlib import Path
 
-from PySide6.QtCore import Property, QFileSystemWatcher, QObject, QTimer, Signal, Slot
+from PySide6.QtCore import Property, QFileSystemWatcher, QObject, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QColor, QFont, QGuiApplication, QPalette
 
 FALLBACK = {
@@ -176,6 +176,11 @@ class Theme(QObject):
     def apply(self) -> None:
         if self._app is not None:
             self._app.setPalette(build_palette(self._colors))
+            # Qt Quick's Fusion style picks its palette from the colour scheme, not from
+            # the application palette, so tell Qt which way the Omarchy theme leans.
+            # Main.qml binds the window palette to these colours as well.
+            scheme = Qt.ColorScheme.Dark if self.isDark else Qt.ColorScheme.Light
+            self._app.styleHints().setColorScheme(scheme)
 
     def color(self, key: str) -> str:
         return self._colors.get(key, FALLBACK.get(key, "#000000"))
@@ -249,6 +254,11 @@ class Theme(QObject):
     @Property(str, notify=changed)
     def brightForeground(self) -> str:  # noqa: N802
         return self.color("bright_foreground")
+
+    @Property(str, notify=changed)
+    def highlightedText(self) -> str:  # noqa: N802
+        """Text on the accent colour."""
+        return self.color("background") if self.isDark else "#ffffff"
 
     @Property(str, notify=changed)
     def red(self) -> str:  # noqa: N802

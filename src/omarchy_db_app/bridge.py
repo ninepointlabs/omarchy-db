@@ -29,20 +29,12 @@ from omarchy_db.fields import FIELD_TYPE_LABELS, FIELD_TYPES, Field, slugify_nam
 from omarchy_db.filters import OP_WORDS, OPS, filter_words, normalise_filter
 from omarchy_db.importer import import_spreadsheet, import_workbook, plan_import, workbook_plan
 from omarchy_db.paths import default_documents_dir, home
-from omarchy_db.reports import form_for
+from omarchy_db.reports import cell_text, form_for
 from omarchy_db.storage import BACKENDS, SQLITE, Storage, create_database, open_database
 
 PAGE_SIZE = 500
 
 BACKEND_WORDS = {"sqlite": "File", "postgres": "PostgreSQL", "mysql": "MySQL / MariaDB"}
-
-
-def _cell_text(value: Any, kind: str | None) -> str:
-    if value is None:
-        return ""
-    if kind == "boolean":
-        return "Yes" if value else "No"
-    return str(value)
 
 
 class RowsModel(QAbstractTableModel):
@@ -65,7 +57,7 @@ class RowsModel(QAbstractTableModel):
         self._names = ["id"] + [field["name"] for field in page["fields"]]
         self._raw = [list(row) for row in page["rows"]]
         self._rows = [
-            [_cell_text(value, self._kinds[i] if i < len(self._kinds) else None)
+            [cell_text(value, self._kinds[i] if i < len(self._kinds) else None)
              for i, value in enumerate(row)]
             for row in self._raw
         ]

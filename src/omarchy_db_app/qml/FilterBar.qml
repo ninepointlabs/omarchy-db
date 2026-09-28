@@ -25,15 +25,25 @@ RowLayout {
         if (!r.ok) toast.show(r.error)
     }
 
+    // Which table the bar was last showing, so moving to another table starts it fresh.
+    property string shownTable: ""
+
     // When the table (or its filter) changes, show the rule on the bar.
     Connections {
         target: Bridge
         function onTableChanged() {
             const f = Bridge.filter
+            const otherTable = Bridge.currentTable !== bar.shownTable
+            bar.shownTable = Bridge.currentTable
             if (f && f.field) {
                 for (let i = 0; i < Bridge.fields.length; i++) if (Bridge.fields[i].name === f.field) fieldBox.currentIndex = i
                 for (let j = 0; j < bar.ops.length; j++) if (bar.ops[j].key === f.op) opBox.currentIndex = j
                 valueField.text = f.value === undefined || f.value === null ? "" : String(f.value)
+            } else if (otherTable) {
+                // No rule on the new table: don't carry the last table's rule over.
+                fieldBox.currentIndex = 0
+                opBox.currentIndex = 0
+                valueField.text = ""
             } else if (fieldBox.currentIndex >= Bridge.fields.length) {
                 fieldBox.currentIndex = 0
             }
@@ -57,6 +67,7 @@ RowLayout {
     }
     TextField {
         id: valueField
+        objectName: "filterValue"
         Layout.fillWidth: true
         Layout.minimumWidth: 90
         Layout.maximumWidth: 220

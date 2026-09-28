@@ -1,6 +1,29 @@
 # Omarchy-DB — status
 
-**Phase B (forms, Excel, reports, printing). Last updated 2026-09-22.**
+**Phase B (forms, Excel, reports, printing). Last updated 2026-09-28.**
+
+## Fix 2026-09-28 — theme palette, number text, form and filter bar
+
+Found while taking new preview screenshots with a bigger demo database.
+
+- **The window ignored the Omarchy palette.** Qt Quick's Fusion style takes
+  its palette from the system colour scheme, not from the application
+  palette `theme.py` sets, so dialogs, inputs and plain labels used Fusion's
+  stock dark palette (grey dialogs on every theme; white text on light
+  themes). `Main.qml` now binds the window palette to `Theme`, and
+  `Theme.apply()` sets the colour-scheme hint from the theme's mode.
+- **Whole numbers read "3350.0".** `reports.cell_text` (now shared by the
+  grid and reports) drops the trailing ".0". CSV export is unchanged.
+- **Form yes/no boxes sat mid-row.** The checkbox fills the row, so it lines
+  up with the text fields.
+- **The filter bar kept the last table's rule.** Moving to a table with no
+  rule starts the bar fresh.
+
+Not a bug, noted for anyone scripting the window: without `app.exec()`,
+`processEvents()` never runs `deleteLater()`, so old grid cells stay on
+screen after a model reset. Send `QEvent.DeferredDelete` by hand.
+
+165 tests pass.
 
 ## Fix 2026-09-22 — "It looks like we cannot add fields"
 

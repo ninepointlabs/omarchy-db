@@ -705,3 +705,82 @@ def test_add_field_through_the_window(app, bridge, sandbox, pets_csv):
     assert "already a field" in dialog.property("error")
     QMetaObject.invokeMethod(dialog, "close")
     engine.deleteLater()
+
+
+def _load_window(app, bridge):
+    from PySide6.QtQml import QQmlApplicationEngine
+
+    from omarchy_db_app.report_bridge import Report, ReportImageProvider
+    from omarchy_db_app.theme import Theme
+
+    engine = QQmlApplicationEngine()
+    provider = ReportImageProvider()
+    engine.addImageProvider("report", provider)
+    engine.rootContext().setContextProperty("Bridge", bridge)
+    engine.rootContext().setContextProperty("Report", Report(bridge.storage, provider))
+    theme = Theme(app)
+    engine.rootContext().setContextProperty("Theme", theme)
+    engine.load(QUrl.fromLocalFile(str(QML_DIR / "Main.qml")))
+    return engine, engine.rootObjects()[0], theme
+
+
+def test_the_window_palette_follows_a_light_theme(app, bridge, tmp_path, monkeypatch):
+    """Fusion paints dialogs and plain labels from the window palette, which must be
+    the Omarchy theme, not Fusion's stock palette for the system colour scheme."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtQml import QQmlEngine, QQmlExpression
+
+    file = tmp_path / "colors.toml"
+    file.write_text(
+        'mode = "light"\nbackground = "#eff1f5"\ndark_background = "#e3e4e8"\n'
+        'foreground = "#4c4f69"\naccent = "#1e66f5"\n'
+    )
+    monkeypatch.setenv("OMARCHY_DB_THEME_FILE", str(file))
+    engine, window, _ = _load_window(app, bridge)
+    try:
+        assert app.styleHints().colorScheme() == Qt.ColorScheme.Light
+        expr = QQmlExpression(
+            QQmlEngine.contextForObject(window), window,
+            "[win.palette.windowText, win.palette.text, win.palette.base, win.palette.window].join(' ')",
+        )
+        assert expr.evaluate()[0] == "#4c4f69 #4c4f69 #eff1f5 #e3e4e8"
+    finally:
+        engine.deleteLater()
+        monkeypatch.delenv("OMARCHY_DB_THEME_FILE")
+        from omarchy_db_app.theme import Theme
+
+        Theme(app)  # put the session's palette back
+
+
+def test_the_filter_bar_starts_fresh_on_another_table(app, bridge, sandbox):
+    import openpyxl
+    from PySide6.QtCore import QEvent
+
+    book = openpyxl.Workbook()
+    book.active.title = "People"
+    book.active.append(["Name", "Moved"])
+    book.active.append(["Ann", True])
+    places = book.create_sheet("Places")
+    places.append(["Town", "Visited"])
+    places.append(["Bend", False])
+    xlsx = sandbox / "two.xlsx"
+    book.save(xlsx)
+    engine, window, _ = _load_window(app, bridge)
+    assert bridge.newDatabase("sqlite", str(sandbox / "two.omadb"), "Two", {})["ok"] is True
+    assert bridge.importAllSheets(str(xlsx), False)["ok"] is True
+    wait_for_import(bridge)
+    try:
+        app.processEvents()
+        value = window.findChild(QObject, "filterValue")
+        bridge.selectTable("people")
+        assert bridge.setFilter("moved", "is_not", "yes")["ok"] is True
+        app.processEvents()
+        assert value.property("text") == "yes"
+        bridge.clearFilter()
+        value.setProperty("text", "typed but not applied")
+        bridge.selectTable("places")
+        app.processEvents()
+        assert value.property("text") == ""
+    finally:
+        engine.deleteLater()
+        app.sendPostedEvents(None, QEvent.Type.DeferredDelete)

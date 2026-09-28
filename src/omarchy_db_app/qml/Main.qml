@@ -16,6 +16,32 @@ ApplicationWindow {
     color: Theme.window
     font.pointSize: 11
 
+    // The Omarchy theme, as the palette every control (and every dialog) paints with.
+    // Fusion would otherwise use its own stock palette for the system colour scheme.
+    palette.window: Theme.window
+    palette.windowText: Theme.foreground
+    palette.base: Theme.base
+    palette.alternateBase: Theme.alternateBase
+    palette.text: Theme.foreground
+    palette.placeholderText: Theme.darkForeground
+    palette.button: Theme.lighterBackground
+    palette.buttonText: Theme.foreground
+    palette.brightText: Theme.brightForeground
+    palette.highlight: Theme.accent
+    palette.highlightedText: Theme.highlightedText
+    palette.link: Theme.blue
+    palette.toolTipBase: Theme.lighterBackground
+    palette.toolTipText: Theme.foreground
+    palette.light: Theme.lighterBackground
+    palette.midlight: Theme.lighterBackground
+    palette.mid: Theme.muted
+    palette.dark: Theme.darkerBackground
+    palette.shadow: Theme.darkerBackground
+    palette.disabled.windowText: Theme.darkForeground
+    palette.disabled.text: Theme.darkForeground
+    palette.disabled.buttonText: Theme.darkForeground
+    palette.disabled.button: Theme.window
+
     // A spreadsheet picked before any database exists: it becomes a new one.
     property string pendingSpreadsheet: ""
 
