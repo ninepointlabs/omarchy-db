@@ -6,6 +6,8 @@ Think of the old Microsoft Access, without the hard parts. Make a database,
 put a spreadsheet in it, look at your rows, print a tidy list. No SQL to learn,
 no server to set up, no account to make.
 
+![The orders table of a demo bike-shop database in the Omarchy-DB grid, Tokyo Night theme](docs/screenshots/grid.webp)
+
 **Status: usable, still young.** Make a database, import a CSV or Excel file,
 browse and edit rows in a grid or one at a time in a form, export to CSV,
 Excel or PDF, and print a tidy report that fits the page. The command line
@@ -34,6 +36,28 @@ for exactly what works today.
 - **Send it back out.** Write any table to CSV, Excel (.xlsx) or PDF.
 - **Let an agent do it.** The MCP server gives Claude Code (or any MCP client)
   the same jobs, so "turn this spreadsheet into a database" just works.
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/view.webp" alt="A saved view showing only bike sales"></td>
+    <td><img src="docs/screenshots/form.webp" alt="One order in the form view"></td>
+  </tr>
+  <tr>
+    <td align="center">A saved view: 40 of 242 orders</td>
+    <td align="center">One record at a time in the form</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/report.webp" alt="The report designer with a landscape preview"></td>
+    <td><img src="docs/screenshots/light.webp" alt="The grid in a light Omarchy theme"></td>
+  </tr>
+  <tr>
+    <td align="center">The report designer: what you see is what prints</td>
+    <td align="center">It follows your Omarchy theme, light or dark</td>
+  </tr>
+</table>
+
+The screenshots use a made-up bike shop database: 242 orders, 86 customers,
+28 products and 70 service jobs, imported from one Excel workbook.
 
 ## How it is built
 
