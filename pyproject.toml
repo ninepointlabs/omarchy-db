@@ -29,7 +29,7 @@ app = ["PySide6>=6.6"]
 xlsx = ["openpyxl>=3.1"]
 postgres = ["psycopg[binary]>=3.1"]
 mysql = ["PyMySQL>=1.1.1"]
-dev = ["pytest>=8.0", "openpyxl>=3.1"]
+dev = ["pytest>=9.0.3", "openpyxl>=3.1"]
 
 [project.scripts]
 omarchy-db = "omarchy_db.cli:main"
