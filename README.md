@@ -100,6 +100,23 @@ asks for the password again next time.
 
 ## Install
 
+### From a package
+
+Each [release](https://github.com/ninepointlabs/jubako/releases) has packages
+for Arch (and Omarchy), Debian / Ubuntu, and Fedora. They pull in Python and
+Qt from your distro and put Jubako in your app launcher.
+
+```sh
+sudo pacman -U jubako-0.2.0-1-any.pkg.tar.zst      # Arch, Omarchy
+sudo apt install ./jubako_0.2.0-1_all.deb          # Debian 13+, Ubuntu 26.04+
+sudo dnf install ./jubako-0.2.0-1.noarch.rpm       # Fedora 44+
+```
+
+Excel files need `openpyxl`: apt and dnf install it along with Jubako, and on
+Arch add `python-openpyxl`.
+
+### From source
+
 Jubako needs Python 3.11 or newer. The window (and PDF reports) need Qt 6
 and PySide6, which Omarchy already has (`pyside6` and `qt6-declarative`).
 
@@ -250,6 +267,18 @@ JUBAKO_PASSWORD=secret .venv/bin/python scripts/smoke_remote.py postgres \
     --host localhost --database jubako_smoke --user postgres
 ```
 
+### Packages
+
+```sh
+scripts/build-packages.sh --test    # Arch, .deb and .rpm into dist/, then install-test each
+```
+
+It builds in Docker containers from the committed tree (`--ref v0.2.0` for a
+tag), then installs each package in a fresh Debian, Ubuntu, Fedora and Arch
+container and checks the command line, the MCP server and the window. When
+`pkgver` changes, release the tag, then set `sha256sums` in
+`packaging/arch/PKGBUILD` to the tag tarball's checksum.
+
 ### Layout
 
 ```
@@ -259,8 +288,8 @@ src/jubako_mcp/   the MCP server agents attach to
 archive/gtk-prototype/  the first (GTK) window, kept for reference only
 data/examples/        a small sample spreadsheet
 tests/                the test suite
-packaging/            the desktop entry and icon
-scripts/              launcher install and the server-backend smoke test
+packaging/            the desktop entry, icon, PKGBUILD, rpm spec, and the .deb/.rpm staging script
+scripts/              launcher install, package builds, and the server-backend smoke test
 ```
 
 ## Licence
