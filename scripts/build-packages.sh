@@ -114,7 +114,7 @@ smoke='
   cd /root
   jubako --help >/dev/null
   jubako new Demo /root/demo >/dev/null
-  jubako import /root/demo.jubadb /pets.csv >/dev/null
+  jubako import /root/demo.jubadb /root/pets.csv >/dev/null
   jubako tables /root/demo.jubadb | grep -q "pets"
   echo "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"smoke\",\"version\":\"0\"}}}" | jubako-mcp | grep -q "\"name\": \"jubako\""
   set +e
@@ -126,7 +126,7 @@ smoke='
   fi
   echo "ok: cli, mcp, window"
 '
-pets="$here/data/examples/pets.csv:/pets.csv:ro"
+pets="$here/data/examples/pets.csv:/root/pets.csv:ro"
 
 for image in debian:13 ubuntu:26.04; do
   echo "== test .deb on $image"
