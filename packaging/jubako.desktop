@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Jubako
+GenericName=Database
+Comment=Make a simple database, put a spreadsheet in it, look at your rows
+Exec=jubako-app %f
+Icon=jubako
+Terminal=false
+Categories=Office;Database;Qt;
+MimeType=application/x-jubako;
+Keywords=database;table;spreadsheet;csv;access;
+StartupNotify=true
+StartupWMClass=jubako

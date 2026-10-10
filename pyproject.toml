@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "omarchy-db"
+name = "jubako"
 version = "0.1.1"
 description = "A simple desktop database for Omarchy Linux, in the spirit of Microsoft Access."
 readme = "README.md"
@@ -32,17 +32,17 @@ mysql = ["PyMySQL>=1.1.1"]
 dev = ["pytest>=9.0.3", "openpyxl>=3.1"]
 
 [project.scripts]
-omarchy-db = "omarchy_db.cli:main"
-omarchy-db-mcp = "omarchy_db_mcp.server:main"
+jubako = "jubako.cli:main"
+jubako-mcp = "jubako_mcp.server:main"
 
 [project.gui-scripts]
-omarchy-db-app = "omarchy_db_app.main:main"
+jubako-app = "jubako_app.main:main"
 
 [project.urls]
-Homepage = "https://github.com/ninepointlabs/omarchy-db"
+Homepage = "https://github.com/ninepointlabs/jubako"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/omarchy_db", "src/omarchy_db_app", "src/omarchy_db_mcp"]
+packages = ["src/jubako", "src/jubako_app", "src/jubako_mcp"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

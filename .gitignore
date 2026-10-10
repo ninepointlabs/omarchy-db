@@ -8,9 +8,9 @@ build/
 .ruff_cache/
 
 # Never commit real databases or exports
-*.omadb
-*.omadb-wal
-*.omadb-shm
+*.jubadb
+*.jubadb-wal
+*.jubadb-shm
 *.sqlite
 *.sqlite3
 /out/

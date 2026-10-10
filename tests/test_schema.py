@@ -6,11 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from omarchy_db import catalog, schema
-from omarchy_db.errors import BadName, OmarchyDBError
-from omarchy_db.importer import import_spreadsheet, import_workbook
-from omarchy_db.reports import form_for, list_reports, load_report, save_form, save_report
-from omarchy_db.storage import create_database, open_database
+from jubako import catalog, schema
+from jubako.errors import BadName, JubakoError
+from jubako.importer import import_spreadsheet, import_workbook
+from jubako.reports import form_for, list_reports, load_report, save_form, save_report
+from jubako.storage import create_database, open_database
 
 
 @pytest.fixture
@@ -60,7 +60,7 @@ def test_drop_field_removes_the_column_and_its_data(pets):
 
 
 def test_the_last_field_cannot_be_dropped(database):
-    from omarchy_db.fields import Field
+    from jubako.fields import Field
 
     database.create_table("one", [Field("only", "text")])
     with pytest.raises(BadName, match="at least one field"):
@@ -99,7 +99,7 @@ def test_drop_table_forgets_its_form_and_reports(pets):
 
 
 def test_delete_database_file_removes_it_and_forgets_it(sandbox: Path):
-    path = sandbox / "gone.omadb"
+    path = sandbox / "gone.jubadb"
     storage = create_database(title="Gone", path=str(path))
     catalog.remember(title="Gone", backend="sqlite", path=str(path))
     result = schema.delete_database_file(storage, str(path))
@@ -107,12 +107,12 @@ def test_delete_database_file_removes_it_and_forgets_it(sandbox: Path):
     assert not path.exists()
     assert not Path(str(path) + "-wal").exists()
     assert catalog.recent() == []
-    with pytest.raises(OmarchyDBError, match="no database"):
+    with pytest.raises(JubakoError, match="no database"):
         schema.delete_database_file(None, str(path))
-    with pytest.raises(OmarchyDBError, match="outside"):
-        schema.delete_database_file(None, "/etc/passwd.omadb")
+    with pytest.raises(JubakoError, match="outside"):
+        schema.delete_database_file(None, "/etc/passwd.jubadb")
     (sandbox / "notes.txt").write_text("hi")
-    with pytest.raises(OmarchyDBError, match="not a database file"):
+    with pytest.raises(JubakoError, match="not a database file"):
         schema.delete_database_file(None, str(sandbox / "notes.txt"))
     assert (sandbox / "notes.txt").exists()
 

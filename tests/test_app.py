@@ -18,16 +18,16 @@ from PySide6.QtCore import QObject, QUrl  # noqa: E402
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-QML_DIR = Path(__file__).resolve().parents[1] / "src" / "omarchy_db_app" / "qml"
+QML_DIR = Path(__file__).resolve().parents[1] / "src" / "jubako_app" / "qml"
 
 
 @pytest.fixture(scope="session")
 def app():
     from PySide6.QtGui import QGuiApplication
 
-    from omarchy_db_app.main import make_app
+    from jubako_app.main import make_app
 
-    return QGuiApplication.instance() or make_app(["omarchy-db-app"])
+    return QGuiApplication.instance() or make_app(["jubako-app"])
 
 
 def wait_for_import(bridge, timeout_ms: int = 30000) -> dict:
@@ -53,7 +53,7 @@ def wait_for_import(bridge, timeout_ms: int = 30000) -> dict:
 
 @pytest.fixture
 def bridge(app, sandbox):
-    from omarchy_db_app.bridge import Bridge
+    from jubako_app.bridge import Bridge
 
     bridge = Bridge()
     yield bridge
@@ -71,7 +71,7 @@ def test_backends_lists_the_three_engines_sqlite_first(bridge):
 
 def test_new_database_then_import_then_rows(bridge, sandbox, pets_csv):
     assert bridge.isOpen is False
-    made = bridge.newDatabase("sqlite", str(sandbox / "pets.omadb"), "My Pets", {})
+    made = bridge.newDatabase("sqlite", str(sandbox / "pets.jubadb"), "My Pets", {})
     assert made == {"ok": True}
     assert bridge.isOpen is True
     assert bridge.title == "My Pets"
@@ -89,7 +89,7 @@ def test_new_database_then_import_then_rows(bridge, sandbox, pets_csv):
 
 
 def test_import_asks_before_replacing_a_table(bridge, sandbox, pets_csv):
-    bridge.newDatabase("sqlite", str(sandbox / "pets.omadb"), "", {})
+    bridge.newDatabase("sqlite", str(sandbox / "pets.jubadb"), "", {})
     bridge.importSpreadsheet(str(pets_csv), False)
     again = bridge.importSpreadsheet(str(pets_csv), False)
     assert again["ok"] is False
@@ -102,31 +102,31 @@ def test_import_asks_before_replacing_a_table(bridge, sandbox, pets_csv):
 
 
 def test_file_urls_are_accepted(bridge, sandbox, pets_csv):
-    url = QUrl.fromLocalFile(str(sandbox / "from-url.omadb")).toString()
+    url = QUrl.fromLocalFile(str(sandbox / "from-url.jubadb")).toString()
     assert bridge.newDatabase("sqlite", url, "", {})["ok"] is True
-    assert bridge.location == str(sandbox / "from-url.omadb")
+    assert bridge.location == str(sandbox / "from-url.jubadb")
     csv_url = QUrl.fromLocalFile(str(pets_csv)).toString()
     assert bridge.importSpreadsheet(csv_url, False)["ok"] is True
-    assert bridge.suggestedDatabaseName(csv_url) == "pets.omadb"
+    assert bridge.suggestedDatabaseName(csv_url) == "pets.jubadb"
 
 
 def test_import_into_new_makes_the_database_and_names_it(bridge, sandbox, pets_csv):
-    result = bridge.importIntoNew(str(pets_csv), str(sandbox / "new.omadb"))
+    result = bridge.importIntoNew(str(pets_csv), str(sandbox / "new.jubadb"))
     assert result["ok"] is True
     assert bridge.title == "Pets"
     assert bridge.totalRows == 4
 
 
 def test_paths_outside_the_approved_roots_are_refused(bridge, sandbox):
-    result = bridge.newDatabase("sqlite", "/etc/evil.omadb", "", {})
+    result = bridge.newDatabase("sqlite", "/etc/evil.jubadb", "", {})
     assert result["ok"] is False
     assert "outside" in result["error"]
     assert bridge.isOpen is False
 
 
 def test_recent_and_open_recent(bridge, sandbox):
-    bridge.newDatabase("sqlite", str(sandbox / "a.omadb"), "A", {})
-    bridge.newDatabase("sqlite", str(sandbox / "b.omadb"), "B", {})
+    bridge.newDatabase("sqlite", str(sandbox / "a.jubadb"), "A", {})
+    bridge.newDatabase("sqlite", str(sandbox / "b.jubadb"), "B", {})
     bridge.closeDatabase()
     recent = bridge.recent()
     assert [r["title"] for r in recent] == ["B", "A"]
@@ -136,15 +136,15 @@ def test_recent_and_open_recent(bridge, sandbox):
 
 
 def test_open_recent_forgets_a_database_that_is_gone(bridge, sandbox):
-    bridge.newDatabase("sqlite", str(sandbox / "gone.omadb"), "Gone", {})
+    bridge.newDatabase("sqlite", str(sandbox / "gone.jubadb"), "Gone", {})
     bridge.closeDatabase()
-    (sandbox / "gone.omadb").unlink()
+    (sandbox / "gone.jubadb").unlink()
     assert bridge.openRecent(0)["ok"] is False
     assert bridge.recent() == []
 
 
 def test_a_remembered_server_asks_for_its_password(bridge, sandbox):
-    from omarchy_db import catalog
+    from jubako import catalog
 
     catalog.remember(
         title="Shop", backend="postgres",
@@ -173,7 +173,7 @@ def test_server_backend_errors_come_back_as_words(bridge):
 def test_rows_model_shows_yes_no_and_blanks(app):
     from PySide6.QtCore import Qt
 
-    from omarchy_db_app.bridge import RowsModel
+    from jubako_app.bridge import RowsModel
 
     model = RowsModel()
     model.load(
@@ -199,7 +199,7 @@ def test_rows_model_shows_yes_no_and_blanks(app):
 def test_theme_reads_omarchy_colors_and_falls_back(tmp_path):
     from PySide6.QtGui import QPalette
 
-    from omarchy_db_app.theme import build_palette, load_colors
+    from jubako_app.theme import build_palette, load_colors
 
     missing = load_colors(tmp_path / "nope.toml")
     assert missing["accent"]  # the fallback
@@ -218,9 +218,9 @@ def test_theme_reads_omarchy_colors_and_falls_back(tmp_path):
 def test_the_window_loads_and_shows_an_imported_table(app, bridge, sandbox, pets_csv):
     from PySide6.QtQml import QQmlApplicationEngine
 
-    from omarchy_db_app.theme import Theme
+    from jubako_app.theme import Theme
 
-    from omarchy_db_app.report_bridge import Report, ReportImageProvider
+    from jubako_app.report_bridge import Report, ReportImageProvider
 
     engine = QQmlApplicationEngine()
     provider = ReportImageProvider()
@@ -231,11 +231,11 @@ def test_the_window_loads_and_shows_an_imported_table(app, bridge, sandbox, pets
     engine.load(QUrl.fromLocalFile(str(QML_DIR / "Main.qml")))
     assert len(engine.rootObjects()) == 1, "Main.qml did not load"
     window = engine.rootObjects()[0]
-    assert window.title() == "Omarchy-DB"
+    assert window.title() == "Jubako"
 
-    assert bridge.importIntoNew(str(pets_csv), str(sandbox / "pets.omadb"))["ok"] is True
+    assert bridge.importIntoNew(str(pets_csv), str(sandbox / "pets.jubadb"))["ok"] is True
     app.processEvents()
-    assert window.title() == "Pets — Omarchy-DB"
+    assert window.title() == "Pets — Jubako"
     grids = [
         child for child in window.findChildren(QObject)
         if child.metaObject().className() == "QQuickTableView"
@@ -246,7 +246,7 @@ def test_the_window_loads_and_shows_an_imported_table(app, bridge, sandbox, pets
 
     bridge.closeDatabase()
     app.processEvents()
-    assert window.title() == "Omarchy-DB"
+    assert window.title() == "Jubako"
     engine.deleteLater()
 
 
@@ -256,9 +256,9 @@ def test_theme_follows_omarchy_theme_set_swapping_the_directory(app, tmp_path, m
 
     from PySide6.QtTest import QTest
 
-    from omarchy_db_app.theme import Theme
+    from jubako_app.theme import Theme
 
-    monkeypatch.delenv("OMARCHY_DB_THEME_FILE", raising=False)
+    monkeypatch.delenv("JUBAKO_THEME_FILE", raising=False)
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
     current = tmp_path / "omarchy" / "current"
     (current / "theme").mkdir(parents=True)
@@ -295,7 +295,7 @@ def test_theme_follows_omarchy_theme_set_swapping_the_directory(app, tmp_path, m
 
 @pytest.fixture
 def pets(bridge, sandbox, pets_csv):
-    assert bridge.importIntoNew(str(pets_csv), str(sandbox / "pets.omadb"))["ok"] is True
+    assert bridge.importIntoNew(str(pets_csv), str(sandbox / "pets.jubadb"))["ok"] is True
     return bridge
 
 
@@ -357,7 +357,7 @@ def test_grid_edit_goes_through_set_data(pets):
 # -- the import wizard and the worker thread ------------------------------------
 
 def test_plan_import_and_import_planned_off_the_gui_thread(bridge, sandbox, pets_csv):
-    bridge.newDatabase("sqlite", str(sandbox / "w.omadb"), "W", {})
+    bridge.newDatabase("sqlite", str(sandbox / "w.jubadb"), "W", {})
     plan = bridge.planImport(str(pets_csv), "")
     assert plan["ok"] is True
     assert plan["table"] == "pets"
@@ -386,7 +386,7 @@ def test_plan_import_and_import_planned_off_the_gui_thread(bridge, sandbox, pets
 
 def test_export_table_from_the_window(bridge, sandbox, pets_csv):
     pytest.importorskip("openpyxl")
-    bridge.importIntoNew(str(pets_csv), str(sandbox / "e.omadb"))
+    bridge.importIntoNew(str(pets_csv), str(sandbox / "e.jubadb"))
     out = bridge.exportTable(QUrl.fromLocalFile(str(sandbox / "out.xlsx")).toString(), "xlsx")
     assert out["ok"] is True
     assert out["rows"] == 4
@@ -395,9 +395,9 @@ def test_export_table_from_the_window(bridge, sandbox, pets_csv):
 
 
 def test_report_bridge_builds_previews_and_keeps(app, bridge, sandbox, pets_csv):
-    from omarchy_db_app.report_bridge import Report, ReportImageProvider
+    from jubako_app.report_bridge import Report, ReportImageProvider
 
-    bridge.importIntoNew(str(pets_csv), str(sandbox / "r.omadb"))
+    bridge.importIntoNew(str(pets_csv), str(sandbox / "r.jubadb"))
     provider = ReportImageProvider()
     report = Report(bridge.storage, provider)
     built = report.build({"table": "pets", "title": "All pets", "columns": ["name", "age"], "margins_mm": "20"})
@@ -452,27 +452,27 @@ def test_delete_table_from_the_bridge(pets):
 
 
 def test_delete_database_from_the_bridge(bridge, sandbox, pets_csv):
-    bridge.importIntoNew(str(pets_csv), str(sandbox / "doomed.omadb"))
+    bridge.importIntoNew(str(pets_csv), str(sandbox / "doomed.jubadb"))
     assert bridge.isLocalFile is True
     path = bridge.location
     result = bridge.deleteDatabase()
     assert result == {"ok": True, "file": path}
     assert bridge.isOpen is False
-    assert not (sandbox / "doomed.omadb").exists()
+    assert not (sandbox / "doomed.jubadb").exists()
     assert bridge.recent() == []
     assert bridge.deleteDatabase()["ok"] is False
 
 
 def test_recent_list_remove_and_delete_file(bridge, sandbox):
-    bridge.newDatabase("sqlite", str(sandbox / "a.omadb"), "A", {})
-    bridge.newDatabase("sqlite", str(sandbox / "b.omadb"), "B", {})
+    bridge.newDatabase("sqlite", str(sandbox / "a.jubadb"), "A", {})
+    bridge.newDatabase("sqlite", str(sandbox / "b.jubadb"), "B", {})
     bridge.closeDatabase()
     assert [r["title"] for r in bridge.recent()] == ["B", "A"]
     assert bridge.removeRecent(0)["ok"] is True
     assert [r["title"] for r in bridge.recent()] == ["A"]
-    assert (sandbox / "b.omadb").exists()
+    assert (sandbox / "b.jubadb").exists()
     assert bridge.deleteRecentFile(0)["ok"] is True
-    assert not (sandbox / "a.omadb").exists()
+    assert not (sandbox / "a.jubadb").exists()
     assert bridge.recent() == []
 
 
@@ -484,7 +484,7 @@ def test_import_every_sheet_from_the_bridge(bridge, sandbox):
     b = book.create_sheet("Places"); b.append(["City"]); b.append(["Tyler"])
     book.create_sheet("Blank")
     book.save(sandbox / "three.xlsx")
-    bridge.newDatabase("sqlite", str(sandbox / "all.omadb"), "All", {})
+    bridge.newDatabase("sqlite", str(sandbox / "all.jubadb"), "All", {})
     url = QUrl.fromLocalFile(str(sandbox / "three.xlsx")).toString()
 
     plan = bridge.workbookPlan(url)
@@ -554,9 +554,9 @@ def test_add_field_and_filter_from_the_bridge(pets):
 
 
 def test_report_bridge_uses_the_table_filter(app, bridge, sandbox, pets_csv):
-    from omarchy_db_app.report_bridge import Report, ReportImageProvider
+    from jubako_app.report_bridge import Report, ReportImageProvider
 
-    bridge.importIntoNew(str(pets_csv), str(sandbox / "f.omadb"))
+    bridge.importIntoNew(str(pets_csv), str(sandbox / "f.jubadb"))
     bridge.setFilter("is_good", "is", "no")
     report = Report(bridge.storage, ReportImageProvider())
     built = report.build({"table": "pets", "columns": ["name"], "filter": bridge.filter})
@@ -615,7 +615,7 @@ def test_saved_views_from_the_bridge(pets, sandbox):
 
 
 def test_a_default_view_opens_with_the_table(bridge, sandbox, pets_csv):
-    bridge.importIntoNew(str(pets_csv), str(sandbox / "d.omadb"))
+    bridge.importIntoNew(str(pets_csv), str(sandbox / "d.jubadb"))
     bridge.setFilter("is_good", "is", "yes")
     assert bridge.saveView("Good ones", False, True)["ok"] is True
     path = bridge.location
@@ -637,8 +637,8 @@ def test_add_field_through_the_window(app, bridge, sandbox, pets_csv):
     from PySide6.QtCore import Q_ARG, QMetaObject
     from PySide6.QtQml import QQmlApplicationEngine
 
-    from omarchy_db_app.report_bridge import Report, ReportImageProvider
-    from omarchy_db_app.theme import Theme
+    from jubako_app.report_bridge import Report, ReportImageProvider
+    from jubako_app.theme import Theme
 
     engine = QQmlApplicationEngine()
     provider = ReportImageProvider()
@@ -648,7 +648,7 @@ def test_add_field_through_the_window(app, bridge, sandbox, pets_csv):
     engine.rootContext().setContextProperty("Theme", Theme(app))
     engine.load(QUrl.fromLocalFile(str(QML_DIR / "Main.qml")))
     window = engine.rootObjects()[0]
-    assert bridge.importIntoNew(str(pets_csv), str(sandbox / "ui.omadb"))["ok"] is True
+    assert bridge.importIntoNew(str(pets_csv), str(sandbox / "ui.jubadb"))["ok"] is True
     app.processEvents()
 
     dialog = window.findChild(QObject, "addFieldDialog")
@@ -710,8 +710,8 @@ def test_add_field_through_the_window(app, bridge, sandbox, pets_csv):
 def _load_window(app, bridge):
     from PySide6.QtQml import QQmlApplicationEngine
 
-    from omarchy_db_app.report_bridge import Report, ReportImageProvider
-    from omarchy_db_app.theme import Theme
+    from jubako_app.report_bridge import Report, ReportImageProvider
+    from jubako_app.theme import Theme
 
     engine = QQmlApplicationEngine()
     provider = ReportImageProvider()
@@ -735,7 +735,7 @@ def test_the_window_palette_follows_a_light_theme(app, bridge, tmp_path, monkeyp
         'mode = "light"\nbackground = "#eff1f5"\ndark_background = "#e3e4e8"\n'
         'foreground = "#4c4f69"\naccent = "#1e66f5"\n'
     )
-    monkeypatch.setenv("OMARCHY_DB_THEME_FILE", str(file))
+    monkeypatch.setenv("JUBAKO_THEME_FILE", str(file))
     engine, window, _ = _load_window(app, bridge)
     try:
         assert app.styleHints().colorScheme() == Qt.ColorScheme.Light
@@ -746,8 +746,8 @@ def test_the_window_palette_follows_a_light_theme(app, bridge, tmp_path, monkeyp
         assert expr.evaluate()[0] == "#4c4f69 #4c4f69 #eff1f5 #e3e4e8"
     finally:
         engine.deleteLater()
-        monkeypatch.delenv("OMARCHY_DB_THEME_FILE")
-        from omarchy_db_app.theme import Theme
+        monkeypatch.delenv("JUBAKO_THEME_FILE")
+        from jubako_app.theme import Theme
 
         Theme(app)  # put the session's palette back
 
@@ -766,7 +766,7 @@ def test_the_filter_bar_starts_fresh_on_another_table(app, bridge, sandbox):
     xlsx = sandbox / "two.xlsx"
     book.save(xlsx)
     engine, window, _ = _load_window(app, bridge)
-    assert bridge.newDatabase("sqlite", str(sandbox / "two.omadb"), "Two", {})["ok"] is True
+    assert bridge.newDatabase("sqlite", str(sandbox / "two.jubadb"), "Two", {})["ok"] is True
     assert bridge.importAllSheets(str(xlsx), False)["ok"] is True
     wait_for_import(bridge)
     try:
@@ -792,7 +792,7 @@ def test_the_views_menu_is_wide_enough_for_its_rows(app, bridge, sandbox, pets_c
 
     engine, window, _ = _load_window(app, bridge)
     window.setProperty("width", 1080)
-    assert bridge.importIntoNew(str(pets_csv), str(sandbox / "menu.omadb"))["ok"] is True
+    assert bridge.importIntoNew(str(pets_csv), str(sandbox / "menu.jubadb"))["ok"] is True
     assert bridge.setFilter("name", "contains", "i")["ok"] is True
     assert bridge.saveView("A view with quite a long name to widen the menu", False, False)["ok"] is True
     try:

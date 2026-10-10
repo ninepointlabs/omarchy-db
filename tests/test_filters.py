@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from omarchy_db import schema
-from omarchy_db.errors import BadName, OmarchyDBError
-from omarchy_db.fields import Field
-from omarchy_db.filters import filter_words, normalise_filter
-from omarchy_db.importer import import_spreadsheet
-from omarchy_db.reports import export_report, fetch_rows, normalise_spec
+from jubako import schema
+from jubako.errors import BadName, JubakoError
+from jubako.fields import Field
+from jubako.filters import filter_words, normalise_filter
+from jubako.importer import import_spreadsheet
+from jubako.reports import export_report, fetch_rows, normalise_spec
 
 
 @pytest.fixture
@@ -39,9 +39,9 @@ def test_add_field_appends_a_blank_column(database, pets_csv):
         schema.add_field(database, "pets", label="Moved")
     with pytest.raises(BadName):
         schema.add_field(database, "pets", label="Row", name="id")
-    with pytest.raises(OmarchyDBError, match="Unknown field type"):
+    with pytest.raises(JubakoError, match="Unknown field type"):
         schema.add_field(database, "pets", label="X", field_type="blob")
-    with pytest.raises(OmarchyDBError, match="label"):
+    with pytest.raises(JubakoError, match="label"):
         schema.add_field(database, "pets", label="   ")
 
 
@@ -72,13 +72,13 @@ def test_filters_are_checked_in_words(pets):
     fields = pets.describe_table("pets").fields
     with pytest.raises(BadName):
         normalise_filter(fields, {"field": "colour", "op": "is", "value": "red"})
-    with pytest.raises(OmarchyDBError, match="Unknown match"):
+    with pytest.raises(JubakoError, match="Unknown match"):
         normalise_filter(fields, {"field": "name", "op": "like", "value": "x"})
-    with pytest.raises(OmarchyDBError, match="Say what"):
+    with pytest.raises(JubakoError, match="Say what"):
         normalise_filter(fields, {"field": "name", "op": "is", "value": ""})
-    with pytest.raises(OmarchyDBError, match="not a whole number"):
+    with pytest.raises(JubakoError, match="not a whole number"):
         normalise_filter(fields, {"field": "age", "op": "is", "value": "old"})
-    with pytest.raises(OmarchyDBError, match="only works on a words field"):
+    with pytest.raises(JubakoError, match="only works on a words field"):
         normalise_filter(fields, {"field": "age", "op": "contains", "value": "4"})
     assert normalise_filter(fields, None) is None
     assert normalise_filter(fields, {}) is None

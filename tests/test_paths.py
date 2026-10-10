@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from omarchy_db.errors import PathNotAllowed
-from omarchy_db.paths import database_path, resolve_under_roots, state_dir
+from jubako.errors import PathNotAllowed
+from jubako.paths import database_path, resolve_under_roots, state_dir
 
 
 def test_a_plain_path_inside_the_root_is_fine(sandbox: Path):
@@ -63,7 +63,7 @@ def test_must_exist_is_enforced(sandbox: Path):
 
 
 def test_database_path_adds_the_suffix(sandbox: Path):
-    assert database_path(str(sandbox / "pets")).name == "pets.omadb"
+    assert database_path(str(sandbox / "pets")).name == "pets.jubadb"
     assert database_path(str(sandbox / "pets.sqlite")).name == "pets.sqlite"
 
 

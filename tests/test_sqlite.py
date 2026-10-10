@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from omarchy_db.errors import BadName, DatabaseExists, DatabaseMissing, TableMissing
-from omarchy_db.fields import BOOLEAN, DATE, INTEGER, REAL, TEXT, Field
-from omarchy_db.storage import create_database, open_database
+from jubako.errors import BadName, DatabaseExists, DatabaseMissing, TableMissing
+from jubako.fields import BOOLEAN, DATE, INTEGER, REAL, TEXT, Field
+from jubako.storage import create_database, open_database
 
 FIELDS = [
     Field("name", TEXT, "Name"),
@@ -21,7 +21,7 @@ FIELDS = [
 
 
 def test_create_then_reopen(sandbox: Path):
-    path = sandbox / "pets.omadb"
+    path = sandbox / "pets.jubadb"
     with create_database(title="Pets", backend="sqlite", path=str(path)) as storage:
         assert storage.title == "Pets"
         assert storage.list_tables() == []
@@ -32,7 +32,7 @@ def test_create_then_reopen(sandbox: Path):
 
 
 def test_creating_twice_is_refused(sandbox: Path):
-    path = str(sandbox / "pets.omadb")
+    path = str(sandbox / "pets.jubadb")
     create_database(title="Pets", backend="sqlite", path=path).close()
     with pytest.raises(DatabaseExists):
         create_database(title="Pets", backend="sqlite", path=path)
@@ -40,7 +40,7 @@ def test_creating_twice_is_refused(sandbox: Path):
 
 def test_opening_something_that_is_not_there(sandbox: Path):
     with pytest.raises(DatabaseMissing):
-        open_database(backend="sqlite", path=str(sandbox / "nope.omadb"))
+        open_database(backend="sqlite", path=str(sandbox / "nope.jubadb"))
 
 
 def test_table_round_trip(database):
@@ -68,7 +68,7 @@ def test_table_round_trip(database):
 
 
 def test_field_types_survive_a_reopen(sandbox: Path):
-    path = str(sandbox / "pets.omadb")
+    path = str(sandbox / "pets.jubadb")
     with create_database(title="Pets", backend="sqlite", path=path) as storage:
         storage.create_table("pets", FIELDS)
     with open_database(backend="sqlite", path=path) as storage:
@@ -100,7 +100,7 @@ def test_bad_names_are_refused(database):
     with pytest.raises(BadName):
         database.create_table("pets", [Field("ok name", TEXT)])
     with pytest.raises(BadName):
-        database.create_table("omadb_sneaky", FIELDS)
+        database.create_table("jubako_sneaky", FIELDS)
     database.create_table("pets", FIELDS)
     with pytest.raises(BadName):
         database.add_row("pets", {"nope": 1})
@@ -116,7 +116,7 @@ def test_missing_table_is_reported_kindly(database):
 def test_internal_tables_stay_hidden(database):
     database.create_table("pets", FIELDS)
     assert database.list_tables() == ["pets"]
-    assert any(name.startswith("omadb_") for name in database.real_table_names())
+    assert any(name.startswith("jubako_") for name in database.real_table_names())
 
 
 def test_replace_drops_the_old_table(database):

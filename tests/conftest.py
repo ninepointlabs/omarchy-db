@@ -17,19 +17,19 @@ EXAMPLE_CSV = Path(__file__).resolve().parents[1] / "data" / "examples" / "pets.
 
 @pytest.fixture
 def sandbox(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """A folder that is the only place Omarchy-DB is allowed to touch."""
-    monkeypatch.setenv("OMARCHY_DB_ROOTS", str(tmp_path))
+    """A folder that is the only place Jubako is allowed to touch."""
+    monkeypatch.setenv("JUBAKO_ROOTS", str(tmp_path))
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
-    monkeypatch.setenv("OMARCHY_DB_DEFAULT_DIR", str(tmp_path))
+    monkeypatch.setenv("JUBAKO_DEFAULT_DIR", str(tmp_path))
     return tmp_path
 
 
 @pytest.fixture
 def database(sandbox: Path):
     """A fresh SQLite database inside the sandbox."""
-    from omarchy_db.storage import create_database
+    from jubako.storage import create_database
 
-    storage = create_database(title="Test", backend="sqlite", path=str(sandbox / "test.omadb"))
+    storage = create_database(title="Test", backend="sqlite", path=str(sandbox / "test.jubadb"))
     yield storage
     storage.close()
 

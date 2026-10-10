@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from omarchy_db.errors import BadName, OmarchyDBError
-from omarchy_db.fields import Field
-from omarchy_db.importer import import_spreadsheet
-from omarchy_db.reports import (
+from jubako.errors import BadName, JubakoError
+from jubako.fields import Field
+from jubako.importer import import_spreadsheet
+from jubako.reports import (
     delete_report,
     export_report,
     fetch_rows,
@@ -51,7 +51,7 @@ def test_normalise_spec_fills_defaults_and_checks_columns(database, pets_csv: Pa
     assert spec["fit_to_width"] is True
     with pytest.raises(BadName):
         normalise_spec(database, {"table": "pets", "columns": ["name", "colour"]})
-    with pytest.raises(OmarchyDBError, match="page size"):
+    with pytest.raises(JubakoError, match="page size"):
         normalise_spec(database, {"table": "pets", "page_size": "tabloid"})
 
 
@@ -73,7 +73,7 @@ def test_export_report_writes_a_pdf_and_paginates(database, pets_csv: Path, sand
     data = Path(result["file"]).read_bytes()
     assert data.startswith(b"%PDF")
 
-    with pytest.raises(OmarchyDBError, match="already a file"):
+    with pytest.raises(JubakoError, match="already a file"):
         export_report(database, {"table": "pets"}, str(sandbox / "pets.pdf"))
     again = export_report(database, {"table": "pets"}, str(sandbox / "pets.pdf"), overwrite=True)
     assert again["replaced_existing_file"] is True
@@ -90,7 +90,7 @@ def test_export_report_writes_a_pdf_and_paginates(database, pets_csv: Path, sand
 
 def test_export_report_refuses_paths_outside_roots(database, pets_csv: Path):
     import_spreadsheet(database, str(pets_csv))
-    with pytest.raises(OmarchyDBError, match="outside"):
+    with pytest.raises(JubakoError, match="outside"):
         export_report(database, {"table": "pets"}, "/etc/pets.pdf")
 
 
@@ -133,8 +133,8 @@ def test_the_printer_path_paints_the_same_pages(database, pets_csv: Path, sandbo
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtPrintSupport import QPrinter
 
-    from omarchy_db.printing import ReportDocument, ensure_gui_app
-    from omarchy_db.reports import fetch_rows, normalise_spec
+    from jubako.printing import ReportDocument, ensure_gui_app
+    from jubako.reports import fetch_rows, normalise_spec
 
     ensure_gui_app()
     import_spreadsheet(database, str(pets_csv))
@@ -151,7 +151,7 @@ def test_the_printer_path_paints_the_same_pages(database, pets_csv: Path, sandbo
 
 
 def test_cell_text_drops_the_trailing_point_zero_on_whole_numbers():
-    from omarchy_db.reports import cell_text
+    from jubako.reports import cell_text
 
     assert cell_text(3350.0, "real") == "3350"
     assert cell_text(42.5, "real") == "42.5"

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from omarchy_db.fields import BOOLEAN, DATE, INTEGER, REAL, TEXT, coerce, unique_names
-from omarchy_db.infer import infer_column_type, infer_fields
+from jubako.fields import BOOLEAN, DATE, INTEGER, REAL, TEXT, coerce, unique_names
+from jubako.infer import infer_column_type, infer_fields
 
 
 @pytest.mark.parametrize(

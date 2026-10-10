@@ -1,4 +1,4 @@
-"""The Omarchy-DB window.
+"""The Jubako window.
 
 Phase A is deliberately small: open a database, see its tables, see the rows.
 Making a database and importing a spreadsheet are here too, because a first
@@ -20,11 +20,11 @@ gi.require_version("Adw", "1")
 
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
-from omarchy_db import __version__, catalog  # noqa: E402
-from omarchy_db.errors import OmarchyDBError  # noqa: E402
-from omarchy_db.importer import import_spreadsheet, plan_import  # noqa: E402
-from omarchy_db.paths import default_documents_dir  # noqa: E402
-from omarchy_db.storage import BACKENDS, SQLITE, create_database, open_database  # noqa: E402
+from jubako import __version__, catalog  # noqa: E402
+from jubako.errors import JubakoError  # noqa: E402
+from jubako.importer import import_spreadsheet, plan_import  # noqa: E402
+from jubako.paths import default_documents_dir  # noqa: E402
+from jubako.storage import BACKENDS, SQLITE, create_database, open_database  # noqa: E402
 
 APP_ID = "org.ninepointlabs.OmarchyDB"
 PAGE_SIZE = 200
@@ -34,7 +34,7 @@ class Window(Adw.ApplicationWindow):
     """One window: the list of tables on the left, the rows on the right."""
 
     def __init__(self, application: Adw.Application) -> None:
-        super().__init__(application=application, title="Omarchy-DB", default_width=1000,
+        super().__init__(application=application, title="Jubako", default_width=1000,
                          default_height=680)
         self.storage: Any = None
         self.current_table: str | None = None
@@ -62,7 +62,7 @@ class Window(Adw.ApplicationWindow):
         self.import_button.set_sensitive(False)
         header.pack_end(self.import_button)
 
-        self.title_widget = Adw.WindowTitle(title="Omarchy-DB", subtitle="No database open")
+        self.title_widget = Adw.WindowTitle(title="Jubako", subtitle="No database open")
         header.set_title_widget(self.title_widget)
 
         self.split = Adw.NavigationSplitView()
@@ -105,7 +105,7 @@ class Window(Adw.ApplicationWindow):
         if entries:
             try:
                 self.open_path(entries[0]["path"], quiet=True)
-            except OmarchyDBError:
+            except JubakoError:
                 pass
 
     # -- actions ----------------------------------------------------------
@@ -156,7 +156,7 @@ class Window(Adw.ApplicationWindow):
             )
             return
         chooser = Gtk.FileDialog(title="Save the new database")
-        chooser.set_initial_name("my-database.omadb")
+        chooser.set_initial_name("my-database.jubadb")
         chooser.set_initial_folder(Gio.File.new_for_path(str(default_documents_dir())))
         chooser.save(self, None, self._on_new_path)
 
@@ -168,7 +168,7 @@ class Window(Adw.ApplicationWindow):
         path = file.get_path()
         try:
             storage = create_database(title="", backend=SQLITE, path=path, overwrite=True)
-        except OmarchyDBError as error:
+        except JubakoError as error:
             self.toast(str(error))
             return
         self._adopt(storage)
@@ -189,7 +189,7 @@ class Window(Adw.ApplicationWindow):
     def open_path(self, path: str, *, quiet: bool = False) -> None:
         try:
             storage = open_database(backend=SQLITE, path=path)
-        except OmarchyDBError as error:
+        except JubakoError as error:
             if not quiet:
                 self.toast(str(error))
             return
@@ -216,7 +216,7 @@ class Window(Adw.ApplicationWindow):
         path = file.get_path()
         try:
             plan = plan_import(path)
-        except OmarchyDBError as error:
+        except JubakoError as error:
             self.toast(str(error))
             return
 
@@ -246,7 +246,7 @@ class Window(Adw.ApplicationWindow):
     def _do_import(self, path: str, *, if_exists: str) -> None:
         try:
             report = import_spreadsheet(self.storage, path, if_exists=if_exists)
-        except OmarchyDBError as error:
+        except JubakoError as error:
             self.toast(str(error))
             return
         self.refresh_tables()
@@ -294,7 +294,7 @@ class Window(Adw.ApplicationWindow):
     def show_table(self, table: str) -> None:
         try:
             page = self.storage.list_rows(table, limit=PAGE_SIZE)
-        except OmarchyDBError as error:
+        except JubakoError as error:
             self.toast(str(error))
             return
         self.current_table = table

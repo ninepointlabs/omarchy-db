@@ -1,4 +1,4 @@
-# Omarchy-DB
+# Jubako
 
 A simple database for your own computer, made for [Omarchy](https://omarchy.org/) Linux.
 
@@ -6,7 +6,10 @@ Think of the old Microsoft Access, without the hard parts. Make a database,
 put a spreadsheet in it, look at your rows, print a tidy list. No SQL to learn,
 no server to set up, no account to make.
 
-![The orders table of a demo bike-shop database in the Omarchy-DB grid, Tokyo Night theme](docs/screenshots/grid.webp)
+A *jūbako* is the stacked Japanese lunch box: one box, several tiers. Jubako
+is one file with several tables.
+
+![The orders table of a demo bike-shop database in the Jubako grid, Tokyo Night theme](docs/screenshots/grid.webp)
 
 **Status: usable, still young.** Make a database, import a CSV or Excel file,
 browse and edit rows in a grid or one at a time in a form, export to CSV,
@@ -17,7 +20,7 @@ for exactly what works today.
 ## What you can do
 
 - **Make a database.** It is one file on your computer. Copy it, back it up, email it.
-- **Import a spreadsheet.** Drop a CSV or Excel file on the window. Omarchy-DB
+- **Import a spreadsheet.** Drop a CSV or Excel file on the window. Jubako
   works out each column (words, whole numbers, numbers with decimals, dates,
   or yes/no), shows you its guesses, and lets you change them before anything
   is written. A workbook with several sheets can become one table per sheet.
@@ -65,10 +68,10 @@ Three pieces, one library underneath:
 
 | Piece | What it is | Command |
 |---|---|---|
-| **The app** | A Qt Quick / QML desktop window. A small PySide6 host starts it and hands it a bridge to the library. Nothing about databases is written in QML. | `omarchy-db-app` |
-| **Reports** | One layout paints the on-screen preview, the PDF and the printer, so what you see is what you get. | in the app, `omarchy-db report`, MCP |
-| **The command line** | The same jobs from a terminal or a script. | `omarchy-db` |
-| **The MCP server** | The same jobs for agents, over stdio. | `omarchy-db-mcp` |
+| **The app** | A Qt Quick / QML desktop window. A small PySide6 host starts it and hands it a bridge to the library. Nothing about databases is written in QML. | `jubako-app` |
+| **Reports** | One layout paints the on-screen preview, the PDF and the printer, so what you see is what you get. | in the app, `jubako report`, MCP |
+| **The command line** | The same jobs from a terminal or a script. | `jubako` |
+| **The MCP server** | The same jobs for agents, over stdio. | `jubako-mcp` |
 
 The window follows your Omarchy theme. It reads the active theme's
 `colors.toml`, so it is dark or light, and uses your accent colour, to match
@@ -77,10 +80,13 @@ the rest of the desktop. Change theme and the open window changes with it.
 ## Where your database lives
 
 By default a new database is a single file in your Documents folder, ending in
-`.omadb`. It is an ordinary SQLite file, so nothing is locked away.
+`.jubadb`. It is an ordinary SQLite file, so nothing is locked away.
+
+Jubako used to be called Omarchy-DB. Its `.omadb` files still open, and the
+first open quietly brings them up to date.
 
 If you already run a **PostgreSQL** or **MySQL / MariaDB** server, you can point
-Omarchy-DB at that instead when you make the database. Same app, same features;
+Jubako at that instead when you make the database. Same app, same features;
 your data stays on your server.
 
 | You pick | What it means | Needs |
@@ -94,15 +100,15 @@ asks for the password again next time.
 
 ## Install
 
-Omarchy-DB needs Python 3.11 or newer. The window (and PDF reports) need Qt 6
+Jubako needs Python 3.11 or newer. The window (and PDF reports) need Qt 6
 and PySide6, which Omarchy already has (`pyside6` and `qt6-declarative`).
 
 ```sh
 # On Omarchy / Arch these are usually present already
 sudo pacman -S --needed pyside6 qt6-declarative
 
-git clone https://github.com/ninepointlabs/omarchy-db.git ~/Projects/omarchy-db
-cd ~/Projects/omarchy-db
+git clone https://github.com/ninepointlabs/jubako.git ~/Projects/jubako
+cd ~/Projects/jubako
 uv venv --system-site-packages .venv      # or: python -m venv --system-site-packages .venv
 uv pip install -e '.[xlsx]'               # or: .venv/bin/pip install -e '.[xlsx]'
 ```
@@ -126,8 +132,8 @@ installs the desktop entry and icon under `~/.local/share`):
 ### The app
 
 ```sh
-omarchy-db-app                        # the home screen
-omarchy-db-app ~/Documents/pets.omadb # open a database straight away
+jubako-app                        # the home screen
+jubako-app ~/Documents/pets.jubadb # open a database straight away
 ```
 
 The home screen has three big buttons: **New database**, **Open a database**,
@@ -147,16 +153,16 @@ and **Save PDF…**. **Export…** writes the table as CSV or Excel.
 ### The command line
 
 ```sh
-omarchy-db backends                                   # what kinds of database you can make
-omarchy-db new "My Pets" ~/Documents/pets.omadb       # make one
-omarchy-db import ~/Documents/pets.omadb pets.csv     # put a spreadsheet in it
-omarchy-db import ~/Documents/pets.omadb book.xlsx --all-sheets   # one table per sheet
-omarchy-db tables ~/Documents/pets.omadb              # what's in there
-omarchy-db rows ~/Documents/pets.omadb pets           # look at the rows
-omarchy-db rows ~/Documents/pets.omadb pets --filter moved is_not yes
-omarchy-db save-view ~/Documents/pets.omadb pets "Still here" --filter moved is_not yes
-omarchy-db export ~/Documents/pets.omadb pets out.csv # send it back out (--format csv|xlsx|pdf)
-omarchy-db report ~/Documents/pets.omadb pets pets.pdf --landscape --title "All the pets"
+jubako backends                                   # what kinds of database you can make
+jubako new "My Pets" ~/Documents/pets.jubadb       # make one
+jubako import ~/Documents/pets.jubadb pets.csv     # put a spreadsheet in it
+jubako import ~/Documents/pets.jubadb book.xlsx --all-sheets   # one table per sheet
+jubako tables ~/Documents/pets.jubadb              # what's in there
+jubako rows ~/Documents/pets.jubadb pets           # look at the rows
+jubako rows ~/Documents/pets.jubadb pets --filter moved is_not yes
+jubako save-view ~/Documents/pets.jubadb pets "Still here" --filter moved is_not yes
+jubako export ~/Documents/pets.jubadb pets out.csv # send it back out (--format csv|xlsx|pdf)
+jubako report ~/Documents/pets.jubadb pets pets.pdf --landscape --title "All the pets"
 ```
 
 There is a tiny example to try: `data/examples/pets.csv`.
@@ -166,7 +172,7 @@ There is a tiny example to try: `data/examples/pets.csv`.
 Add this to your MCP client. For Claude Code:
 
 ```sh
-claude mcp add omarchy-db -- /home/you/Projects/omarchy-db/.venv/bin/omarchy-db-mcp
+claude mcp add jubako -- /home/you/Projects/jubako/.venv/bin/jubako-mcp
 ```
 
 Then ask it to do the work:
@@ -179,7 +185,7 @@ The tools are `list_backends`, `create_database`, `list_databases`,
 `add_field`, `rename_field`, `delete_field`, `delete_table`, `delete_database`,
 `list_views`, `get_view`, `save_view`, `delete_view`,
 `create_form`, `get_form`, `create_report`, `list_reports`, `delete_report`,
-`export_report` and `export_table`. Run `omarchy-db-mcp --tools` to print
+`export_report` and `export_table`. Run `jubako-mcp --tools` to print
 their schemas.
 
 ## How your columns get their types
@@ -200,9 +206,9 @@ The guesses are shown to you before anything is written, and you can change them
 
 ## Safety
 
-- **Files stay where you said.** Every path Omarchy-DB opens or writes is
+- **Files stay where you said.** Every path Jubako opens or writes is
   checked against a list of approved folders — your home directory by default,
-  or whatever `OMARCHY_DB_ROOTS` says. A path that climbs out with `../`, or a
+  or whatever `JUBAKO_ROOTS` says. A path that climbs out with `../`, or a
   symlink that points outside, is refused. This matters most for the MCP
   server, where an agent supplies the paths.
 - **Spreadsheet formulas are never run.** In a CSV, a cell holding `=1+1` is
@@ -218,7 +224,7 @@ The guesses are shown to you before anything is written, and you can change them
 - **Names are checked, not escaped.** Table and field names must be plain
   identifiers; anything else is refused rather than quoted around.
 
-Your own settings live in `~/.local/state/omarchy-db/` (owner-only). Your
+Your own settings live in `~/.local/state/jubako/` (owner-only). Your
 databases live wherever you put them.
 
 ## Developing
@@ -240,16 +246,16 @@ A live PostgreSQL or MySQL server is not needed for the test suite. To check
 one of those for real:
 
 ```sh
-OMARCHY_DB_PASSWORD=secret .venv/bin/python scripts/smoke_remote.py postgres \
-    --host localhost --database omadb_smoke --user postgres
+JUBAKO_PASSWORD=secret .venv/bin/python scripts/smoke_remote.py postgres \
+    --host localhost --database jubako_smoke --user postgres
 ```
 
 ### Layout
 
 ```
-src/omarchy_db/       the core: backends, import, export, reports, printing, paths, CLI
-src/omarchy_db_app/   the desktop app: PySide6 host, bridge, report bridge, theme, and qml/
-src/omarchy_db_mcp/   the MCP server agents attach to
+src/jubako/       the core: backends, import, export, reports, printing, paths, CLI
+src/jubako_app/   the desktop app: PySide6 host, bridge, report bridge, theme, and qml/
+src/jubako_mcp/   the MCP server agents attach to
 archive/gtk-prototype/  the first (GTK) window, kept for reference only
 data/examples/        a small sample spreadsheet
 tests/                the test suite

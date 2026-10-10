@@ -1,13 +1,13 @@
-"""Saved views: named filters that live in the .omadb."""
+"""Saved views: named filters that live in the .jubadb."""
 
 from __future__ import annotations
 
 import pytest
 
-from omarchy_db import schema, views
-from omarchy_db.errors import OmarchyDBError
-from omarchy_db.importer import import_spreadsheet
-from omarchy_db.storage import open_database
+from jubako import schema, views
+from jubako.errors import JubakoError
+from jubako.importer import import_spreadsheet
+from jubako.storage import open_database
 
 STILL_HERE = {"field": "moved", "op": "is_not", "value": "yes"}
 
@@ -38,9 +38,9 @@ def test_save_list_apply_delete(pets):
 
 
 def test_views_survive_close_and_reopen(sandbox, pets_csv):
-    from omarchy_db.storage import create_database
+    from jubako.storage import create_database
 
-    path = str(sandbox / "kept.omadb")
+    path = str(sandbox / "kept.jubadb")
     first = create_database(title="Kept", path=path)
     import_spreadsheet(first, str(pets_csv))
     schema.add_field(first, "pets", label="Moved", field_type="boolean")
@@ -56,18 +56,18 @@ def test_views_survive_close_and_reopen(sandbox, pets_csv):
 
 
 def test_names_are_checked(pets):
-    with pytest.raises(OmarchyDBError, match="name"):
+    with pytest.raises(JubakoError, match="name"):
         views.save_view(pets, "pets", "  ", STILL_HERE)
-    with pytest.raises(OmarchyDBError, match="colon"):
+    with pytest.raises(JubakoError, match="colon"):
         views.save_view(pets, "pets", "a:b", STILL_HERE)
-    with pytest.raises(OmarchyDBError, match="Apply a filter first"):
+    with pytest.raises(JubakoError, match="Apply a filter first"):
         views.save_view(pets, "pets", "Nothing", None)
     views.save_view(pets, "pets", "Still here", STILL_HERE)
-    with pytest.raises(OmarchyDBError, match="already a view"):
+    with pytest.raises(JubakoError, match="already a view"):
         views.save_view(pets, "pets", "Still here", {"field": "moved", "op": "empty"})
     replaced = views.save_view(pets, "pets", "Still here", {"field": "moved", "op": "empty"}, replace=True)
     assert replaced["replaced"] is True and replaced["words"] == "Moved is empty"
-    with pytest.raises(OmarchyDBError):
+    with pytest.raises(JubakoError):
         views.save_view(pets, "pets", "Broken", {"field": "colour", "op": "is", "value": "red"})
 
 
@@ -86,7 +86,7 @@ def test_rename_view(pets):
     renamed = views.rename_view(pets, "pets", "Still here", "Not moved")
     assert renamed["name"] == "Not moved"
     assert [v["name"] for v in views.list_views(pets, "pets")] == ["Not moved"]
-    with pytest.raises(OmarchyDBError, match="no view"):
+    with pytest.raises(JubakoError, match="no view"):
         views.rename_view(pets, "pets", "Still here", "X")
 
 

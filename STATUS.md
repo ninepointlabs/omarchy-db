@@ -1,4 +1,4 @@
-# Omarchy-DB — status
+# Jubako — status
 
 **Phase B (forms, Excel, reports, printing). Last updated 2026-09-28.**
 
@@ -73,7 +73,7 @@ so nothing was added to it; it was left as it is.
 
 Tim's follow-up: a filter worth keeping should not have to be typed again.
 A **view** is one table, one name, one "Show rows where…" rule, kept inside
-the `.omadb` under `view:<table>:<name>` in Omarchy-DB's own info table, so
+the `.jubadb` under `view:<table>:<name>` in Jubako's own info table, so
 it travels with the file and survives close and reopen.
 
 **In the window.** The filter bar ends with **Views…** (it reads "View: Still
@@ -97,7 +97,7 @@ their words); deleting the field deletes those views; deleting the table
 deletes its views. A view that somehow points at a missing field is removed
 with a message when picked.
 
-**Core, MCP, CLI.** `omarchy_db/views.py`: `save_view` (refuses a blank or
+**Core, MCP, CLI.** `jubako/views.py`: `save_view` (refuses a blank or
 taken name, needs a real filter), `get_view`, `list_views`, `delete_view`,
 `rename_view`, `default_view`; uses `filters.normalise_filter`, so there is
 still one filter language. MCP (28 tools now): `list_views`, `get_view`,
@@ -140,7 +140,7 @@ Clear is one click. The rule is remembered per table while the database is
 open, and dropped quietly if its field is renamed or deleted. "contains" is
 for words fields only.
 
-One helper, `omarchy_db/filters.py`, makes the SQL for everyone: the grid,
+One helper, `jubako/filters.py`, makes the SQL for everyone: the grid,
 the form, reports, the CLI (`rows --filter FIELD OP [VALUE]`) and MCP
 (`list_rows` takes `filter: {field, op, value}`). There is no free-form SQL:
 the field must be one of the table's, the match is one of five, and the value
@@ -202,7 +202,7 @@ the form, confirm each). New, each with its own confirm in plain words:
 - *Whole database*: More… → "Delete this whole database…" shows the file
   path and "cannot be undone"; the connection closes, the file and any
   `-wal` / `-shm` / `-journal` sidecars are removed, the recent list forgets
-  it, and the window returns Home. Only for a local `.omadb`; for a
+  it, and the window returns Home. Only for a local `.jubadb`; for a
   PostgreSQL or MySQL database the menu item is disabled and the bridge
   and MCP refuse with "a server database is left alone". On Home, each
   recent entry has a "…" menu with "Remove from this list" and "Delete the
@@ -320,11 +320,11 @@ unit test performs the same rm-rf-then-rename twice.
   uses the values Excel last saved for formulas, and never runs anything.
   Export writes real Excel types (numbers, dates, booleans), bold headings,
   frozen header row. Old `.xls` is refused with advice.
-- **Reports**: `omarchy_db/reports.py` holds the spec (table, columns, title,
+- **Reports**: `jubako/reports.py` holds the spec (table, columns, title,
   page size Letter/A4/Legal, orientation, margins, fit-to-width, text size,
   row numbers), the row fetch and the column-fitting arithmetic; forms and
-  reports are kept inside the database in Omarchy-DB's own info table.
-  `omarchy_db/printing.py` lays out and paints pages with Qt: one
+  reports are kept inside the database in Jubako's own info table.
+  `jubako/printing.py` lays out and paints pages with Qt: one
   `ReportDocument` writes the PDF, prints to a `QPrinter`, and renders the
   preview image, so what you preview is what you print. Fit-to-width shrinks
   columns proportionally (never below their longest word) and wraps cells;
@@ -347,7 +347,7 @@ unit test performs the same rm-rf-then-rename twice.
   `create_report`, `list_reports`, `delete_report`, `export_report`;
   `import_spreadsheet` and `plan_import` take `sheet`; `export_table` takes
   `format` csv | xlsx | pdf. 19 tools in all.
-- **CLI**: `omarchy-db report <db> <table> <out.pdf> [--title --columns --page
+- **CLI**: `jubako report <db> <table> <out.pdf> [--title --columns --page
   --landscape --no-fit]`; `export --format csv|xlsx|pdf`; `import --sheet`.
 - **Host**: `QApplication` instead of `QGuiApplication`, only because the
   system print dialog is a widget. The UI is still all QML.
@@ -373,10 +373,10 @@ unit test performs the same rm-rf-then-rename twice.
   wizard on a two-sheet workbook (imported the People sheet with the right
   types), a landscape one-page PDF and a seven-page wrapping report whose
   PDF pages (via `pdftoppm`) match the preview image.
-- MCP: `omarchy-db-mcp --tools` lists 19 tools; the MCP test drives
+- MCP: `jubako-mcp --tools` lists 19 tools; the MCP test drives
   update/delete row, create/get form, create/list/export/delete report
   through the real handlers.
-- CLI: `omarchy-db report … --landscape` wrote a one-page PDF.
+- CLI: `jubako report … --landscape` wrote a one-page PDF.
 
 ## Not yet verified
 
@@ -387,7 +387,7 @@ unit test performs the same rm-rf-then-rename twice.
 - **Pressing Print in the system dialog.** The dialog cannot be driven from
   here. The path it feeds (`ReportDocument.print_to(QPrinter)`) is tested by
   printing to a PDF-format `QPrinter`, and the dialog constructs.
-- **Forms and reports on server backends.** They are kept in Omarchy-DB's
+- **Forms and reports on server backends.** They are kept in Jubako's
   own info table through the shared storage interface, so they should work
   on all three engines, but have only run on SQLite.
 
@@ -411,8 +411,8 @@ unit test performs the same rm-rf-then-rename twice.
 - **SQLite** keeps dates as ISO text and yes/no as 0/1. The library turns them
   back into real dates and yes/no on the way out, so all three engines look the
   same to the app. PostgreSQL and MySQL use their own `DATE` and boolean types.
-- **Row identity.** Every table Omarchy-DB makes gets an automatic `id`. A
-  table made outside Omarchy-DB without an `id` column can be listed and
+- **Row identity.** Every table Jubako makes gets an automatic `id`. A
+  table made outside Jubako without an `id` column can be listed and
   read, but not updated or deleted row by row, so the form and grid editing
   will refuse it.
 - **Where a database lives.** SQLite is a file the user picks. For PostgreSQL
@@ -436,7 +436,7 @@ unit test performs the same rm-rf-then-rename twice.
   is made, and starts an offscreen `QGuiApplication` if none exists (that is
   how the MCP server and CLI make PDFs).
 - **Forms and reports are stored in the database file**, under `form:<table>`
-  and `report:<name>` keys in `omadb_info`, so they travel with the `.omadb`.
+  and `report:<name>` keys in `jubako_info`, so they travel with the `.jubadb`.
 - **The wizard is the only import path in the window.** Dropping a file,
   the Import button and the first-run path all open it, so the type guesses
   are always shown before anything is written.

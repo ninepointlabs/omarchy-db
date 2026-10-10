@@ -1,4 +1,4 @@
-"""The Omarchy-DB desktop window (GTK4 + Libadwaita)."""
+"""The Jubako desktop window (GTK4 + Libadwaita)."""
 
 __all__ = ["main"]
 

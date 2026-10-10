@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from omarchy_db_mcp import server
+from jubako_mcp import server
 
 
 def call(name: str, **arguments):
@@ -39,7 +39,7 @@ def test_every_tool_is_listed_with_a_schema():
 
 
 def test_the_whole_job_end_to_end(sandbox: Path, pets_csv: Path):
-    path = str(sandbox / "pets.omadb")
+    path = str(sandbox / "pets.jubadb")
 
     made, failed = call("create_database", title="Pets", backend="sqlite", path=path)
     assert not failed and made["made"] is True
@@ -81,11 +81,11 @@ def test_the_whole_job_end_to_end(sandbox: Path, pets_csv: Path):
 
 
 def test_paths_outside_the_roots_come_back_as_a_clean_error(sandbox: Path):
-    payload, failed = call("create_database", title="Nope", path="/etc/omarchy-db.omadb")
+    payload, failed = call("create_database", title="Nope", path="/etc/jubako.jubadb")
     assert failed is True
     assert "outside the folders" in payload["error"]
 
-    path = str(sandbox / "ok.omadb")
+    path = str(sandbox / "ok.jubadb")
     call("create_database", title="Ok", path=path)
     payload, failed = call("import_spreadsheet", path=path, file="../../etc/passwd")
     assert failed is True
@@ -93,7 +93,7 @@ def test_paths_outside_the_roots_come_back_as_a_clean_error(sandbox: Path):
 
 
 def test_overwrite_is_reported(sandbox: Path, pets_csv: Path):
-    path = str(sandbox / "pets.omadb")
+    path = str(sandbox / "pets.jubadb")
     call("create_database", title="Pets", path=path)
     call("import_spreadsheet", path=path, file=str(pets_csv))
     out = str(sandbox / "out.csv")
@@ -131,13 +131,13 @@ def test_handshake_over_the_wire(sandbox: Path, pets_csv: Path):
             "method": "tools/call",
             "params": {
                 "name": "create_database",
-                "arguments": {"title": "Wire", "path": str(sandbox / "wire.omadb")},
+                "arguments": {"title": "Wire", "path": str(sandbox / "wire.jubadb")},
             },
         },
     ]
     source = "\n".join(json.dumps(request) for request in requests) + "\n"
     process = subprocess.run(
-        [sys.executable, "-m", "omarchy_db_mcp"],
+        [sys.executable, "-m", "jubako_mcp"],
         input=source,
         capture_output=True,
         text=True,
@@ -148,11 +148,11 @@ def test_handshake_over_the_wire(sandbox: Path, pets_csv: Path):
     assert process.returncode == 0, process.stderr
     replies = [json.loads(line) for line in process.stdout.splitlines() if line.strip()]
     assert [reply["id"] for reply in replies] == [1, 2, 3]
-    assert replies[0]["result"]["serverInfo"]["name"] == "omarchy-db"
+    assert replies[0]["result"]["serverInfo"]["name"] == "jubako"
     assert replies[0]["result"]["protocolVersion"] == server.PROTOCOL_VERSION
     assert len(replies[1]["result"]["tools"]) == len(server.TOOL_SCHEMAS)
     assert replies[2]["result"]["isError"] is False
-    assert (sandbox / "wire.omadb").exists()
+    assert (sandbox / "wire.jubadb").exists()
 
 
 def test_bad_json_does_not_stop_the_server():
@@ -168,16 +168,16 @@ def _env(sandbox: Path) -> dict:
 
     env = dict(os.environ)
     env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
-    env["OMARCHY_DB_ROOTS"] = str(sandbox)
+    env["JUBAKO_ROOTS"] = str(sandbox)
     env["XDG_STATE_HOME"] = str(sandbox / "state")
     return env
 
 
 def test_row_form_and_report_tools(sandbox, pets_csv):
     pytest.importorskip("PySide6")
-    from omarchy_db_mcp.server import HANDLERS
+    from jubako_mcp.server import HANDLERS
 
-    db = str(sandbox / "mcp.omadb")
+    db = str(sandbox / "mcp.jubadb")
     HANDLERS["create_database"]({"title": "Pets", "path": db})
     HANDLERS["import_spreadsheet"]({"path": db, "file": str(pets_csv)})
     rows = HANDLERS["list_rows"]({"path": db, "table": "pets"})
@@ -211,9 +211,9 @@ def test_row_form_and_report_tools(sandbox, pets_csv):
 
 def test_schema_tools_and_import_all_sheets(sandbox, pets_csv):
     openpyxl = pytest.importorskip("openpyxl")
-    from omarchy_db_mcp.server import HANDLERS
+    from jubako_mcp.server import HANDLERS
 
-    db = str(sandbox / "schema.omadb")
+    db = str(sandbox / "schema.jubadb")
     HANDLERS["create_database"]({"title": "S", "path": db})
     HANDLERS["import_spreadsheet"]({"path": db, "file": str(pets_csv)})
 
@@ -240,16 +240,16 @@ def test_schema_tools_and_import_all_sheets(sandbox, pets_csv):
 
     with pytest.raises(Exception, match="confirm"):
         HANDLERS["delete_database"]({"path": db, "confirm": False})
-    assert (sandbox / "schema.omadb").exists()
+    assert (sandbox / "schema.jubadb").exists()
     assert HANDLERS["delete_database"]({"path": db, "confirm": True})["deleted"] is True
-    assert not (sandbox / "schema.omadb").exists()
+    assert not (sandbox / "schema.jubadb").exists()
 
 
 def test_add_field_and_filtered_rows_and_report(sandbox, pets_csv):
     pytest.importorskip("PySide6")
-    from omarchy_db_mcp.server import HANDLERS
+    from jubako_mcp.server import HANDLERS
 
-    db = str(sandbox / "filter.omadb")
+    db = str(sandbox / "filter.jubadb")
     HANDLERS["create_database"]({"title": "F", "path": db})
     HANDLERS["import_spreadsheet"]({"path": db, "file": str(pets_csv)})
     added = HANDLERS["add_field"]({"path": db, "table": "pets", "label": "Moved", "type": "boolean"})
@@ -270,9 +270,9 @@ def test_add_field_and_filtered_rows_and_report(sandbox, pets_csv):
 
 
 def test_view_tools(sandbox, pets_csv):
-    from omarchy_db_mcp.server import HANDLERS
+    from jubako_mcp.server import HANDLERS
 
-    db = str(sandbox / "views.omadb")
+    db = str(sandbox / "views.jubadb")
     HANDLERS["create_database"]({"title": "V", "path": db})
     HANDLERS["import_spreadsheet"]({"path": db, "file": str(pets_csv)})
     HANDLERS["add_field"]({"path": db, "table": "pets", "label": "Moved", "type": "boolean"})

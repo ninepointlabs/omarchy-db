@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Put Omarchy-DB in the app launcher for this user.
+# Put Jubako in the app launcher for this user.
 #
 # It links the app's commands into ~/.local/bin, installs the desktop entry
 # and the icon, and refreshes the desktop database. Nothing goes outside
@@ -14,14 +14,14 @@ apps_dir="$data_dir/applications"
 icon_dir="$data_dir/icons/hicolor/scalable/apps"
 
 if [[ "${1:-}" == "--remove" ]]; then
-  rm -f "$bin_dir/omarchy-db-app" "$bin_dir/omarchy-db" "$bin_dir/omarchy-db-mcp"
-  rm -f "$apps_dir/omarchy-db.desktop" "$icon_dir/omarchy-db.svg"
+  rm -f "$bin_dir/jubako-app" "$bin_dir/jubako" "$bin_dir/jubako-mcp"
+  rm -f "$apps_dir/jubako.desktop" "$icon_dir/jubako.svg"
   update-desktop-database "$apps_dir" 2>/dev/null || true
-  echo "Removed the Omarchy-DB launcher."
+  echo "Removed the Jubako launcher."
   exit 0
 fi
 
-for cmd in omarchy-db-app omarchy-db omarchy-db-mcp; do
+for cmd in jubako-app jubako jubako-mcp; do
   if [[ ! -x "$here/.venv/bin/$cmd" ]]; then
     echo "Install the app first (see README): cd $here && uv venv --system-site-packages && uv pip install -e ." >&2
     exit 1
@@ -29,12 +29,12 @@ for cmd in omarchy-db-app omarchy-db omarchy-db-mcp; do
 done
 
 mkdir -p "$bin_dir" "$apps_dir" "$icon_dir"
-for cmd in omarchy-db-app omarchy-db omarchy-db-mcp; do
+for cmd in jubako-app jubako jubako-mcp; do
   ln -sf "$here/.venv/bin/$cmd" "$bin_dir/$cmd"
 done
-install -Dm644 "$here/packaging/omarchy-db.desktop" "$apps_dir/omarchy-db.desktop"
-install -Dm644 "$here/packaging/omarchy-db.svg" "$icon_dir/omarchy-db.svg"
+install -Dm644 "$here/packaging/jubako.desktop" "$apps_dir/jubako.desktop"
+install -Dm644 "$here/packaging/jubako.svg" "$icon_dir/jubako.svg"
 update-desktop-database "$apps_dir" 2>/dev/null || true
 gtk-update-icon-cache -q "$data_dir/icons/hicolor" 2>/dev/null || true
 
-echo "Omarchy-DB is in your launcher. Commands: omarchy-db-app, omarchy-db, omarchy-db-mcp"
+echo "Jubako is in your launcher. Commands: jubako-app, jubako, jubako-mcp"

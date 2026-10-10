@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from omarchy_db.errors import ImportProblem, OmarchyDBError, PathNotAllowed
-from omarchy_db.exporter import export_table
-from omarchy_db.fields import BOOLEAN, DATE, INTEGER, REAL, TEXT
-from omarchy_db.importer import import_spreadsheet, plan_import
+from jubako.errors import ImportProblem, JubakoError, PathNotAllowed
+from jubako.exporter import export_table
+from jubako.fields import BOOLEAN, DATE, INTEGER, REAL, TEXT
+from jubako.importer import import_spreadsheet, plan_import
 
 
 def test_plan_reports_what_would_happen(pets_csv: Path):
@@ -36,7 +36,7 @@ def test_import_creates_the_table_and_rows(database, pets_csv: Path):
 
 def test_importing_twice_is_refused_unless_asked(database, pets_csv: Path):
     import_spreadsheet(database, str(pets_csv))
-    with pytest.raises(OmarchyDBError):
+    with pytest.raises(JubakoError):
         import_spreadsheet(database, str(pets_csv))
     report = import_spreadsheet(database, str(pets_csv), if_exists="replace")
     assert report["rows_added"] == 4
@@ -139,7 +139,7 @@ def test_xlsx_import_picks_a_sheet_and_reads_saved_formula_values(database, sand
     result = import_spreadsheet(database, str(sandbox / "two.xlsx"), sheet="Totals")
     assert result["table"] == "totals"
     # openpyxl wrote no cached value for the formula, so the cell is blank —
-    # the formula itself is never worked out by Omarchy-DB.
+    # the formula itself is never worked out by Jubako.
     rows = database.list_rows("totals")["rows"]
     assert rows[0][1:3] == ["Pen", 1.5]
     assert rows[0][3] is None
@@ -168,7 +168,7 @@ def test_export_will_not_clobber_without_permission(database, pets_csv: Path, sa
     import_spreadsheet(database, str(pets_csv))
     out = sandbox / "out.csv"
     out.write_text("keep me", "utf-8")
-    with pytest.raises(OmarchyDBError):
+    with pytest.raises(JubakoError):
         export_table(database, "pets", str(out))
     report = export_table(database, "pets", str(out), overwrite=True)
     assert report["replaced_existing_file"] is True
@@ -177,12 +177,12 @@ def test_export_will_not_clobber_without_permission(database, pets_csv: Path, sa
 def test_export_refuses_a_path_outside_the_roots(database, pets_csv: Path):
     import_spreadsheet(database, str(pets_csv))
     with pytest.raises(PathNotAllowed):
-        export_table(database, "pets", "/etc/omarchy-db-escape.csv")
+        export_table(database, "pets", "/etc/jubako-escape.csv")
 
 
 def test_unknown_export_format_is_refused(database, pets_csv: Path, sandbox: Path):
     import_spreadsheet(database, str(pets_csv))
-    with pytest.raises(OmarchyDBError, match="cannot write"):
+    with pytest.raises(JubakoError, match="cannot write"):
         export_table(database, "pets", str(sandbox / "out.doc"), file_format="doc")
 
 

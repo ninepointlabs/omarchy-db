@@ -8,16 +8,16 @@ drops the table again.
 
     # PostgreSQL
     python scripts/smoke_remote.py postgres \
-        --host localhost --port 5432 --database omadb_smoke --user postgres --password secret
+        --host localhost --port 5432 --database jubako_smoke --user postgres --password secret
 
     # MySQL / MariaDB
     python scripts/smoke_remote.py mysql \
-        --host 127.0.0.1 --port 3306 --database omadb_smoke --user root --password secret
+        --host 127.0.0.1 --port 3306 --database jubako_smoke --user root --password secret
 
 Connection details can also come from the environment, so nothing has to be
 typed on a shared command line:
 
-    OMARCHY_DB_PG_URL=postgresql://user:pw@localhost/omadb_smoke python scripts/smoke_remote.py postgres
+    JUBAKO_PG_URL=postgresql://user:pw@localhost/jubako_smoke python scripts/smoke_remote.py postgres
 """
 
 from __future__ import annotations
@@ -29,11 +29,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from omarchy_db.errors import OmarchyDBError  # noqa: E402
-from omarchy_db.fields import BOOLEAN, DATE, INTEGER, REAL, TEXT, Field  # noqa: E402
-from omarchy_db.storage import create_database, open_database  # noqa: E402
+from jubako.errors import JubakoError  # noqa: E402
+from jubako.fields import BOOLEAN, DATE, INTEGER, REAL, TEXT, Field  # noqa: E402
+from jubako.storage import create_database, open_database  # noqa: E402
 
-TABLE = "omadb_smoke_pets"
+TABLE = "jubako_smoke_pets"
 
 FIELDS = [
     Field("name", TEXT, "Name"),
@@ -49,9 +49,9 @@ def step(text: str) -> None:
 
 
 def run(backend: str, connection: dict) -> int:
-    print(f"Omarchy-DB smoke test: {backend}")
+    print(f"Jubako smoke test: {backend}")
 
-    step("connecting and setting up Omarchy-DB's own tables")
+    step("connecting and setting up Jubako's own tables")
     storage = create_database(title="Smoke test", backend=backend, connection=connection)
     print(f"     connected to {storage.location()}")
 
@@ -114,16 +114,16 @@ def run(backend: str, connection: dict) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("backend", choices=["postgres", "mysql"])
-    parser.add_argument("--host", default=os.environ.get("OMARCHY_DB_HOST", "localhost"))
+    parser.add_argument("--host", default=os.environ.get("JUBAKO_HOST", "localhost"))
     parser.add_argument("--port", type=int, default=0)
-    parser.add_argument("--database", default=os.environ.get("OMARCHY_DB_NAME", "omadb_smoke"))
-    parser.add_argument("--user", default=os.environ.get("OMARCHY_DB_USER", ""))
+    parser.add_argument("--database", default=os.environ.get("JUBAKO_NAME", "jubako_smoke"))
+    parser.add_argument("--user", default=os.environ.get("JUBAKO_USER", ""))
     parser.add_argument(
         "--password",
-        default=os.environ.get("OMARCHY_DB_PASSWORD", ""),
-        help="Better given through OMARCHY_DB_PASSWORD than typed here.",
+        default=os.environ.get("JUBAKO_PASSWORD", ""),
+        help="Better given through JUBAKO_PASSWORD than typed here.",
     )
-    parser.add_argument("--url", default=os.environ.get("OMARCHY_DB_PG_URL", ""))
+    parser.add_argument("--url", default=os.environ.get("JUBAKO_PG_URL", ""))
     args = parser.parse_args(argv)
 
     if args.backend == "postgres":
@@ -149,7 +149,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         return run(args.backend, connection)
-    except OmarchyDBError as error:
+    except JubakoError as error:
         print(f"FAILED — {error}", file=sys.stderr)
         return 2
     except AssertionError as error:
