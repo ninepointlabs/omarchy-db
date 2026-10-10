@@ -41,8 +41,9 @@ def make_app(argv: list[str]) -> QApplication:
     app.setApplicationVersion(__version__)
     # On Wayland this is the app id Hyprland sees, so it must match the .desktop name.
     app.setDesktopFileName(APP_ID)
+    # Installed packages put the icon in the theme; a source checkout has it here.
     icon = Path(__file__).resolve().parents[2] / "packaging" / "jubako.svg"
-    app.setWindowIcon(QIcon.fromTheme(APP_ID, QIcon(str(icon))))
+    app.setWindowIcon(QIcon.fromTheme(APP_ID, QIcon(str(icon)) if icon.exists() else QIcon()))
     return app
 
 
