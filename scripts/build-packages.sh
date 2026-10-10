@@ -141,4 +141,4 @@ docker run --rm -v "$out:/out:ro" -v "$pets" fedora:44 bash -c "
 
 echo "== test Arch package on archlinux:latest"
 docker run --rm -v "$out:/out:ro" -v "$pets" archlinux:latest bash -c "
-  pacman -Syu --noconfirm /out/jubako-${version}-1-any.pkg.tar.zst >/dev/null && $smoke"
+  pacman -Syu --noconfirm >/dev/null && pacman -U --noconfirm /out/jubako-${version}-1-any.pkg.tar.zst >/dev/null && $smoke"
