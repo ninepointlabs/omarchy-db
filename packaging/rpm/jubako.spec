@@ -1,0 +1,44 @@
+Name:           jubako
+Version:        0.2.0
+Release:        1%{?dist}
+Summary:        A simple desktop database, in the spirit of Microsoft Access
+License:        MIT
+URL:            https://github.com/ninepointlabs/jubako
+Source0:        %{url}/archive/refs/tags/v%{version}/%{name}-%{version}.tar.gz
+BuildArch:      noarch
+
+Requires:       python3 >= 3.11
+Requires:       python3-pyside6 >= 6.6
+Requires:       qt6-qtdeclarative
+Recommends:     python3-openpyxl
+Suggests:       python3-psycopg3
+Suggests:       python3-PyMySQL
+
+%description
+Make a database, put a spreadsheet in it, look at your rows, print a tidy
+list. No SQL to learn, no server to set up. A Qt Quick window, a command
+line and an MCP server for agents, over one SQLite file per database.
+
+%prep
+%autosetup -n %{name}-%{version}
+
+%build
+
+%install
+packaging/stage.sh %{buildroot}
+# rpm keeps docs and licences through %%doc and %%license below.
+rm -rf %{buildroot}%{_docdir}/%{name} %{buildroot}%{_datadir}/licenses/%{name}
+
+%files
+%license LICENSE
+%doc README.md
+%{_bindir}/jubako
+%{_bindir}/jubako-app
+%{_bindir}/jubako-mcp
+%{_prefix}/lib/jubako/
+%{_datadir}/applications/jubako.desktop
+%{_datadir}/icons/hicolor/scalable/apps/jubako.svg
+
+%changelog
+* Sat Oct 10 2026 Nine Point Labs <179739321+ninepointlabs@users.noreply.github.com> - 0.2.0-1
+- Renamed from Omarchy-DB; first packaged release.

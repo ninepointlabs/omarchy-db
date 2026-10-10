@@ -1,0 +1,30 @@
+# Maintainer: Nine Point Labs <179739321+ninepointlabs@users.noreply.github.com>
+pkgname=jubako
+pkgver=0.2.0
+pkgrel=1
+pkgdesc="A simple desktop database for Omarchy, in the spirit of Microsoft Access"
+arch=('any')
+url="https://github.com/ninepointlabs/jubako"
+license=('MIT')
+depends=('python' 'pyside6' 'qt6-declarative')
+optdepends=(
+  'python-openpyxl: import and export Excel workbooks'
+  'python-psycopg: keep a database on a PostgreSQL server'
+  'python-pymysql: keep a database on a MySQL / MariaDB server'
+)
+makedepends=('python-build' 'python-installer' 'python-hatchling')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  cd "$pkgname-$pkgver"
+  python -m build --wheel --no-isolation
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  python -m installer --destdir="$pkgdir" dist/*.whl
+  install -Dm644 packaging/jubako.desktop "$pkgdir/usr/share/applications/jubako.desktop"
+  install -Dm644 packaging/jubako.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/jubako.svg"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

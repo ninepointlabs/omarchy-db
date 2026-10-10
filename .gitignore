@@ -11,6 +11,9 @@ build/
 *.jubadb
 *.jubadb-wal
 *.jubadb-shm
+*.omadb
+*.omadb-wal
+*.omadb-shm
 *.sqlite
 *.sqlite3
 /out/
