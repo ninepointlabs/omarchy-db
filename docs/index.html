@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jubako 重箱 · Microsoft Access, without the hard parts</title>
+<meta name="description" content="A simple desktop database for Omarchy and Linux. Make a database, put a spreadsheet in it, look at your rows, print a tidy report. No SQL, no server.">
+<link rel="canonical" href="https://jubako.ninepointlabs.com/">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://jubako.ninepointlabs.com/">
+<meta property="og:title" content="Jubako 重箱 · Microsoft Access, without the hard parts">
+<meta property="og:description" content="One file, every table. A simple desktop database for Omarchy and Linux, with a CLI and an MCP server for agents.">
+<meta property="og:image" content="https://jubako.ninepointlabs.com/media/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#0e0a09">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@700;900&display=swap&text=%E9%87%8D%E7%AE%B1%E3%81%B2%E3%81%A8%E3%81%A4%E3%81%AE%E3%81%AB%E3%80%81%E3%81%99%E3%81%B9%E3%81%A6%E3%82%92%E3%80%82%E3%81%98%E3%82%85%E3%81%86%E3%81%B0%E3%81%93%E4%B8%80%E4%BA%8C%E4%B8%89%E5%9B%9B%E4%BA%94%E5%85%AD%E4%B8%83%E5%85%AB%E4%B9%9D" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<div class="waves" aria-hidden="true"></div>
+<div class="motes" aria-hidden="true"></div>
+
+<header class="bar">
+  <a class="brand" href="#top"><span class="seal small">重</span> Jubako</a>
+  <nav>
+    <a href="#features">Features</a>
+    <a href="#install">Install</a>
+    <a href="#agents">Agents</a>
+    <a href="https://github.com/ninepointlabs/jubako">GitHub</a>
+  </nav>
+</header>
+
+<main id="top">
+  <section class="hero">
+    <div class="box" aria-hidden="true">
+      <div class="lid"><div class="lid-top"></div><div class="mon">重</div></div>
+      <div class="tier shu"><b>service_jobs</b><span>70 rows</span></div>
+      <div class="tier"><b>products</b><span>28 rows</span></div>
+      <div class="tier shu"><b>customers</b><span>86 rows</span></div>
+      <div class="tier"><b>orders</b><span>242 rows</span></div>
+      <div class="box-shadow"></div>
+    </div>
+    <div class="hero-text">
+      <p class="kanji jp" lang="ja"><span>重<small>stacked</small></span><span>箱<small>box</small></span></p>
+      <h1>Jubako</h1>
+      <p class="pron"><span class="jp" lang="ja">じゅうばこ</span> · <b>joo</b>-bah-koh</p>
+      <p class="def"><i>noun</i> Lacquered boxes that stack into one. <b>One file, several tables.</b></p>
+      <p class="tag">Microsoft Access, <em>without the hard parts.</em></p>
+      <div class="cta">
+        <a class="btn gold" href="#install">Download 0.2.0</a>
+        <a class="btn" href="https://github.com/ninepointlabs/jubako">View on GitHub</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="hook">
+    <h2 class="chaos">Spreadsheet chaos?</h2>
+    <p><code>orders_FINAL_v7.xlsx</code> or <code>orders (2).csv</code>? <b>Which one is right?</b></p>
+    <p class="calm">Put them in one box. Make a database, put a spreadsheet in it, look at your rows, print a tidy
+      list. No SQL to learn, no server to set up, no account to make.</p>
+  </section>
+
+  <section class="video">
+    <video controls preload="none" poster="media/poster.webp" playsinline>
+      <source src="media/jubako-promo.mp4" type="video/mp4">
+    </video>
+  </section>
+
+  <section id="features" class="features">
+    <div class="cards">
+      <article class="card">
+        <h3><span class="seal">一</span><span>Bring your <em>spreadsheets</em></span></h3>
+        <p>Drop a CSV or Excel file on the window. Jubako works out each column (words, whole numbers, decimals,
+          dates, yes/no) and shows you its guesses before anything is written. A workbook with several sheets can
+          become one table per sheet.</p>
+      </article>
+      <article class="card">
+        <h3><span class="seal">二</span><span>One box. <em>Many tiers.</em></span></h3>
+        <p>A database is one <code>.jubadb</code> file: copy it, back it up, email it. It's ordinary SQLite, so
+          nothing is locked away. Already run PostgreSQL or MySQL? Point Jubako there instead.</p>
+      </article>
+      <article class="card">
+        <h3><span class="seal">四</span><span>Change <em>your mind</em></span></h3>
+        <p>Add a field, rename one, delete one. Delete a table or the whole file. The destructive ones ask first.</p>
+      </article>
+    </div>
+
+    <article class="shot">
+      <figure><img src="screenshots/grid.webp" alt="The orders table of a demo bike-shop database in the Jubako grid" loading="lazy"></figure>
+      <div>
+        <h3><span class="seal">三</span><span>Browse. <em>Edit.</em></span></h3>
+        <p>A grid of everything in a table. Tap a row to pick it, double-tap a cell to change it.</p>
+      </div>
+    </article>
+    <article class="shot flip">
+      <figure><img src="screenshots/view.webp" alt="A saved view showing only bike sales" loading="lazy"></figure>
+      <div>
+        <h3><span class="seal">五</span><span>Save it as a <em>view</em></span></h3>
+        <p>“Show rows where Category contains bike” hides the rest. Save a rule you keep using, like “Still here”,
+          and it lives inside the database file.</p>
+      </div>
+    </article>
+    <article class="shot">
+      <figure><img src="screenshots/form.webp" alt="One order in the form view" loading="lazy"></figure>
+      <div>
+        <h3><span class="seal">六</span><span>One record <em>at a time</em></span></h3>
+        <p>A form for every table. Previous, Next, Save, New row.</p>
+      </div>
+    </article>
+    <article class="shot flip">
+      <figure><img src="screenshots/report.webp" alt="The report designer with a landscape preview" loading="lazy"></figure>
+      <div>
+        <h3><span class="seal">七</span><span>Reports that <em>fit the page</em></span></h3>
+        <p>Pick the columns, a title, the page size. Columns shrink and wrap so the whole table fits. One layout
+          paints the preview, the PDF and the printer, so what you see is what prints. Export to CSV, Excel or PDF.</p>
+      </div>
+    </article>
+    <article class="shot">
+      <figure><img src="screenshots/light.webp" alt="The grid in a light Omarchy theme" loading="lazy"></figure>
+      <div>
+        <h3><span class="seal">八</span><span>Wears <em>your theme</em></span></h3>
+        <p>Jubako reads your Omarchy theme and follows it, dark or light, with your accent colour. Change theme and
+          the open window changes with it.</p>
+      </div>
+    </article>
+  </section>
+
+  <section id="agents" class="agents">
+    <h3><span class="seal">九</span><span>Let your <em>agents</em> in</span></h3>
+    <p>An MCP server and a command line do the same jobs as the window, so “turn this spreadsheet into a database”
+      just works from Claude Code or any MCP client.</p>
+    <div class="term" role="img" aria-label="A terminal session using the jubako command line">
+      <div class="term-bar"><i></i><i></i><i></i><span>jubako</span></div>
+<pre><span class="p">$</span> jubako new "Harbor Cycles" ~/Documents/harbor-cycles
+<span class="p">$</span> jubako import ~/Documents/harbor-cycles.jubadb book.xlsx --all-sheets
+<span class="p">$</span> jubako report ~/Documents/harbor-cycles.jubadb orders orders.pdf --landscape
+<span class="c"># or let an agent drive it: claude mcp add jubako -- jubako-mcp</span></pre>
+    </div>
+  </section>
+
+  <section id="install" class="install">
+    <h2>Install</h2>
+    <p class="lead">Packages for Arch and Omarchy, Debian and Ubuntu, and Fedora. They use your distro's Python and
+      Qt, and put Jubako in your app launcher.</p>
+    <div class="pkgs">
+      <div class="pkg">
+        <h4>Arch · Omarchy</h4>
+        <pre>sudo pacman -U jubako-0.2.0-1-any.pkg.tar.zst</pre>
+        <a href="https://github.com/ninepointlabs/jubako/releases/download/v0.2.0/jubako-0.2.0-1-any.pkg.tar.zst">Download .pkg.tar.zst</a>
+      </div>
+      <div class="pkg">
+        <h4>Debian 13+ · Ubuntu 26.04+</h4>
+        <pre>sudo apt install ./jubako_0.2.0-1_all.deb</pre>
+        <a href="https://github.com/ninepointlabs/jubako/releases/download/v0.2.0/jubako_0.2.0-1_all.deb">Download .deb</a>
+      </div>
+      <div class="pkg">
+        <h4>Fedora 44+</h4>
+        <pre>sudo dnf install ./jubako-0.2.0-1.noarch.rpm</pre>
+        <a href="https://github.com/ninepointlabs/jubako/releases/download/v0.2.0/jubako-0.2.0-1.noarch.rpm">Download .rpm</a>
+      </div>
+    </div>
+    <p class="fine">Checksums and release notes are on the <a href="https://github.com/ninepointlabs/jubako/releases/latest">latest
+      release</a>. To run from source, see the <a href="https://github.com/ninepointlabs/jubako#install">README</a>.</p>
+  </section>
+</main>
+
+<footer>
+  <p class="say"><span class="jp" lang="ja">ひとつの箱に、すべてを。</span> <i>Everything, in one box.</i></p>
+  <p class="pills"><span>One file, every table</span><span>Forms · views · reports</span><span>CLI + MCP</span><span>Free &amp; open source</span></p>
+  <p class="small">Made by <a href="https://ninepointlabs.com">Nine Point Labs</a> for <a href="https://omarchy.org">Omarchy</a>.
+    MIT licence. Screenshots use an invented bike shop.</p>
+</footer>
+
+<script>
+  // A few gold motes drifting up through the page, as in the promo.
+  if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    const motes = document.querySelector(".motes");
+    for (let i = 0; i < 36; i++) {
+      const m = document.createElement("i");
+      const size = 2 + Math.random() * 4;
+      m.style.cssText = `left:${Math.random() * 100}%;top:${Math.random() * 100}%;width:${size}px;height:${size}px;` +
+        `animation-duration:${14 + Math.random() * 18}s,${2 + Math.random() * 4}s;animation-delay:${-Math.random() * 30}s,${-Math.random() * 4}s`;
+      motes.appendChild(m);
+    }
+  }
+</script>
+</body>
+</html>
